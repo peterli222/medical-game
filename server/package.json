@@ -1,7 +1,7 @@
 {
-  "name": "medical-simulator-server",
+  "name": "medical-consultation-simulator",
   "version": "1.0.0",
-  "description": "医疗问诊模拟游戏后端服务",
+  "description": "医疗问诊练习系统 - 给医学生练习看病问诊用的模拟器",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",

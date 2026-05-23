@@ -1,442 +1,263 @@
-# 🏥 杏林问诊 - 医疗问诊模拟系统
+# 医疗问诊模拟器
 
-一个基于 AI 的医疗问诊模拟平台，专为医学生和医疗培训设计。系统模拟真实医院环境，提供完整的问诊、检查、开药和病历管理流程。
+这是一个医疗问诊练习系统，专门给医学生和医护人员用来练习看病问诊的。
 
-![Node.js](https://img.shields.io/badge/Node.js-18+-green)
-![License](https://img.shields.io/badge/License-MIT-blue)
-![Version](https://img.shields.io/badge/Version-1.0.0-orange)
+用这个系统可以模拟真实的看病过程：患者来看病，你作为医生进行问诊、开检查、开药，最后系统会给你打分评价。
 
-## ✨ 核心功能
+## 系统能做什么
 
-### 🩺 智能问诊系统
-- **AI 驱动的患者模拟**：每个患者都有独特的病史、症状和性格
-- **自然语言对话**：支持自由问诊，AI 患者会根据病情回答问题
-- **复诊病人支持**：30% 概率生成复诊病人，携带历史诊断信息
+### 看病问诊
 
-### 🔬 检查系统
-- **100+ 检查项目**：覆盖血常规、影像学、生化检查等
-- **疾病/症状搜索**：输入症状或疾病名，自动推荐相关检查
-- **智能检查报告**：AI 生成专业的检查报告，包含专科医生意见
+- 系统会自动生成虚拟患者，每个患者有不同的病情
+- 你可以用自然语言和患者对话，问患者哪里不舒服
+- 患者会根据自己的病情回答你的问题
+- 有时候会出现复诊的病人，带着以前的病历来看病
 
-### 💊 开药系统
-- **86+ 常用药品**：覆盖内科、外科、妇科等各科室
-- **适应症搜索**：支持同义词扩展（如"感冒"→"上呼吸道感染"）
-- **处方管理**：完整的处方开具、保存和管理功能
+### 做检查
 
-### 📋 病历管理
-- **医院标准格式**：模仿真实医院门诊病历
-- **完整字段**：主诉、现病史、既往史、个人史、家族史、体格检查等
-- **自动同步**：检查结果自动同步到病历辅助检查字段
-- **评分详情**：AI 评分后显示详细的诊疗评估报告
+- 系统有100多种检查项目，包括抽血化验、拍片子、B超等
+- 可以根据症状或者疾病名称搜索应该做什么检查
+- 检查结果会自动生成，包含专业医生的意见
 
-### 📊 AI 评分系统
-- **四维度评分**：诊断(45分)、检查(20分)、用药(20分)、问诊(15分)
-- **详细反馈**：分项评分、费用统计、诊断匹配度、总体评价
-- **历史记录**：保存所有评分记录，支持回顾和对比
+### 开药
 
-## 🚀 快速开始
+- 系统有86种常用药，覆盖各个科室
+- 可以根据适应症搜索药品
+- 可以开处方，管理处方
 
-### 环境要求
+### 写病历
 
-- **Node.js**: 18.0 或更高版本
-- **npm**: 9.0 或更高版本
-- **操作系统**: Linux / macOS / Windows
+- 病历格式和真实医院门诊病历一样
+- 包含主诉、现病史、既往史、个人史、家族史、体格检查等
+- 检查结果会自动填到病历里
+- 打分后会显示详细的评价报告
+
+### 系统打分
+
+- 从4个方面打分：诊断(45分)、检查(20分)、用药(20分)、问诊(15分)
+- 会告诉你哪里做得好，哪里需要改进
+- 会统计检查花了多少钱，开药花了多少钱
+- 会保存你的所有成绩，可以回顾
+
+## 怎么安装使用
+
+### 需要什么环境
+
+- Node.js 18.0 或更高版本
+- npm 9.0 或更高版本
+- Windows、Mac、Linux 都可以用
 
 ### 安装步骤
 
-#### 1. 克隆项目
+**第一步：下载代码**
 
 ```bash
-git clone https://github.com/your-username/medical-game.git
+git clone https://github.com/peterli222/medical-game.git
 cd medical-game
 ```
 
-#### 2. 安装依赖
+**第二步：安装依赖**
 
 ```bash
 cd server
 npm install
 ```
 
-#### 3. 配置 AI API
+**第三步：配置AI（可选）**
 
-复制示例配置文件：
+如果想用AI功能（智能生成病例、AI打分等），需要配置AI接口：
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，配置你的 AI API：
-
-```env
-# AI API 配置
-AI_API_URL=https://api.deepseek.com/v1/chat/completions
-AI_API_KEY=your_api_key_here
-AI_MODEL=deepseek-chat
-
-# 服务器配置
-PORT=3003
-HOST=0.0.0.0
-
-# 安全配置（可选）
-MEDICAL_APP_SECRET=your_secret_key_here
-```
-
-#### 4. 启动服务
+然后编辑 `.env` 文件，填入你的AI接口信息：
 
 ```bash
-# 开发模式
-npm run dev
+# DeepSeek接口（推荐，便宜好用）
+AI_API_URL=https://api.deepseek.com/v1/chat/completions
+AI_API_KEY=你的API密钥
+AI_MODEL=deepseek-chat
 
-# 生产模式
+# 或者用OpenAI
+# AI_API_URL=https://api.openai.com/v1/chat/completions
+# AI_API_KEY=你的API密钥
+# AI_MODEL=gpt-4
+
+# 或者用本地AI（Ollama）
+# AI_API_URL=http://localhost:11434/v1/chat/completions# AI_API_KEY=ollama
+# AI_MODEL=qwen2.5
+```
+
+**第四步：启动服务**
+
+```bash
 npm start
 ```
 
-#### 5. 访问系统
+**第五步：打开浏览器**
 
-打开浏览器访问：`http://localhost:3003`
+访问 http://localhost:3003
 
-## 🔧 API 配置指南
+## 怎么用这个系统
 
-### 支持的 AI 提供商
+### 开始看病
 
-系统支持任何兼容 OpenAI API 格式的 AI 服务：
+1. 点击"新患者"按钮，系统会生成一个虚拟患者
+2. 患者会告诉你哪里不舒服
+3. 你可以问患者问题，了解病情
+4. 根据病情开检查单
+5. 查看检查结果
+6. 写诊断、开处方
+7. 点击"完成诊疗"
+8. 系统会给你打分，告诉你哪里做得好，哪里需要改进
 
-#### DeepSeek（推荐）
+### 功能按钮说明
 
-```env
-AI_API_URL=https://api.deepseek.com/v1/chat/completions
-AI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-AI_MODEL=deepseek-chat
-```
+- **新患者**：生成新的虚拟患者
+- **病历**：查看和编辑病历
+- **检查**：开检查单、查看检查结果
+- **开药**：开处方
+- **完成诊疗**：结束看病，让系统打分
+- **提示**：如果你不知道该做什么，可以点这个按钮
+- **设置**：配置AI接口
 
-#### OpenAI
+### 配置AI功能
 
-```env
-AI_API_URL=https://api.openai.com/v1/chat/completions
-AI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-AI_MODEL=gpt-4
-```
+点击右上角的齿轮按钮，可以配置AI功能：
 
-#### 本地部署（Ollama）
+- **AI接口地址**：填写AI服务的网址
+- **API密钥**：填写你的密钥
+- **模型名称**：填写使用的AI模型
+- **测试连接**：测试能不能连上AI服务
 
-```env
-AI_API_URL=http://localhost:11434/v1/chat/completions
-AI_API_KEY=ollama
-AI_MODEL=qwen2.5
-```
+配置好后，可以打开这些开关：
+- AI生成病例：让AI随机生成各种疾病病例
+- AI生成患者描述：让AI扮演患者，用更自然的方式描述病情
+- AI生成检查报告：让AI生成更专业的检查报告
+- AI智能评分：让AI给你的诊疗过程打分
 
-#### 其他兼容服务
-
-```env
-AI_API_URL=https://your-api-endpoint.com/v1/chat/completions
-AI_API_KEY=your_api_key
-AI_MODEL=your_model_name
-```
-
-### API 参数说明
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `AI_API_URL` | API 端点地址 | `https://api.deepseek.com/v1/chat/completions` |
-| `AI_API_KEY` | API 密钥 | 无（必填） |
-| `AI_MODEL` | 模型名称 | `deepseek-chat` |
-| `PORT` | 服务器端口 | `3003` |
-| `HOST` | 监听地址 | `0.0.0.0` |
-| `MEDICAL_APP_SECRET` | 加密密钥 | 自动生成 |
-
-### 运行时修改 API 配置
-
-系统支持在 Web 界面中动态修改 API 配置：
-
-1. 点击右上角 ⚙️ 设置按钮
-2. 输入 API URL、API Key 和模型名称
-3. 点击"保存设置"
-
-配置会自动加密保存到 `server/data/ai-settings.json`。
-
-## 📁 项目结构
+## 项目结构
 
 ```
 medical-game/
-├── public/                    # 前端文件
-│   ├── index.html            # 主页面
-│   ├── app.js                # 前端逻辑
-│   ├── styles.css            # 样式文件
-│   └── medicalRecord.js      # 病历模块
-├── server/                    # 后端文件
-│   ├── routes/               # API 路由
-│   │   ├── patients.js       # 患者相关 API
-│   │   ├── examinations.js   # 检查相关 API
-│   │   ├── medicines.js      # 药品相关 API
-│   │   ├── medicalRecords.js # 病历相关 API
-│   │   └── settings.js       # 设置 API
-│   ├── services/             # 业务逻辑
-│   │   ├── LLMService.js     # AI 服务
-│   │   ├── PatientAgent.js   # 患者生成
-│   │   └── DataStore.js      # 数据存储
-│   ├── models/               # 数据模型
-│   │   ├── Patient.js
-│   │   ├── Examination.js
-│   │   ├── Medicine.js
-│   │   └── MedicalRecord.js
-│   ├── data/                 # 数据文件
-│   │   ├── medicines.json    # 药品数据库
-│   │   ├── examinations.json # 检查数据库
-│   │   └── diseases.json     # 疾病数据库
-│   ├── package.json
-│   └── server.js             # 服务器入口
-├── .env.example              # 环境变量示例
-├── .gitignore
-├── LICENSE
-└── README.md
+├── public/                  # 前端文件（网页）
+│   ├── index.html          # 主页面
+│   ├── app.js              # 主要程序
+│   ├── styles.css          # 样式
+│   └── medicalRecord.js    # 病历相关程序
+│
+├── server/                  # 后端文件（服务器）
+│   ├── app.js              # 服务器入口
+│   ├── package.json        # 依赖配置
+│   ├── routes/             # API接口
+│   │   ├── patients.js     # 患者相关接口
+│   │   ├── examinations.js # 检查相关接口
+│   │   ├── medicines.js    # 药品相关接口
+│   │   ├── medicalRecords.js # 病历相关接口
+│   │   └── settings.js     # 设置相关接口
+│   ├── services/           # 业务逻辑
+│   │   ├── PatientAgent.js # 患者生成和问诊
+│   │   ├── LLMService.js   # AI接口服务
+│   │   └── DataStore.js    # 数据存储
+│   ├── models/             # 数据模型
+│   │   ├── Patient.js      # 患者数据结构
+│   │   ├── Examination.js  # 检查数据结构
+│   │   ├── Medicine.js     # 药品数据结构
+│   │   └── MedicalRecord.js # 病历数据结构
+│   └── data/               # 数据文件
+│       └── diseaseDatabase.js # 疾病数据库
+│
+├── .env.example             # 环境变量配置示例
+├── .gitignore               # Git忽略规则
+├── install.sh               # 自动安装脚本
+├── LICENSE                  # MIT许可证
+└── README.md                # 本文档
 ```
 
-## 🎯 使用指南
+## AI接口配置说明
 
-### 1. 开始问诊
+### 推荐使用DeepSeek
 
-- 点击右上角"🔄 新患者"按钮
-- AI 会生成一个虚拟患者，包含基本信息和症状
-- 在问诊标签页与患者对话
+DeepSeek是国内的AI服务，价格便宜，速度快，中文效果好。
 
-### 2. 开具检查
+注册地址：https://platform.deepseek.com
 
-- 切换到"🔬 检查"标签页
-- 使用疾病/症状搜索获取推荐检查
-- 或手动搜索并添加检查项目
-- 查看检查结果（自动同步到病历）
+注册后，在API密钥页面创建一个密钥，复制下来填入 `.env` 文件。
 
-### 3. 开具处方
+价格：大约每100万字1块钱。
 
-- 切换到"💊 开药"标签页
-- 搜索药品（支持适应症、药品名称）
-- 设置用法用量
-- 保存处方
+### 使用OpenAI
 
-### 4. 填写病历
+如果你有OpenAI的账号，也可以用GPT-4。
 
-- 切换到"📋 病历"标签页
-- 填写完整的门诊病历
-- 检查结果会自动同步到"辅助检查"字段
+注册地址：https://platform.openai.com
 
-### 5. 结束诊疗
+注意：需要科学上网，价格较贵。
 
-- 点击"✅ 结束诊疗"按钮
-- 输入你的诊断
-- AI 会给出评分和详细反馈
+### 使用本地AI（Ollama）
 
-## 🔌 API 接口文档
+如果你想完全免费，可以在自己电脑上跑AI。
 
-### 患者相关
+1. 安装Ollama：https://ollama.ai
+2. 下载模型：`ollama pull qwen2.5`
+3. 启动Ollama服务
+4. 在 `.env` 里配置：
+   ```
+   AI_API_URL=http://localhost:11434/v1/chat/completions
+   AI_API_KEY=ollama
+   AI_MODEL=qwen2.5
+   ```
 
-#### 创建新患者
-```http
-POST /api/patients/new
-Content-Type: application/json
+注意：本地AI需要较好的电脑配置，建议至少16G内存。
 
-{
-  "recentCases": ["案例1", "案例2"]
-}
-```
+## 不用AI也能玩
 
-#### 创建新患者（流式）
-```http
-POST /api/patients/new-stream
-Content-Type: application/json
+即使不配置AI，这个系统也能正常使用：
 
-{
-  "recentCases": []
-}
-```
+- 系统内置了多种常见疾病
+- 检查结果会自动生成
+- 开药功能完全可用
+- 只是不能用AI打分和AI生成病例
 
-#### 患者对话
-```http
-POST /api/patients/:id/chat
-Content-Type: application/json
+## 常见问题
 
-{
-  "message": "你哪里不舒服？"
-}
-```
+### 问：安装时报错怎么办？
 
-#### 结束诊疗（评分）
-```http
-POST /api/patients/:id/evaluate
-Content-Type: application/json
-
-{
-  "userDiagnosis": "急性上呼吸道感染",
-  "examinationCosts": 150,
-  "prescriptionCosts": 80,
-  "questionCount": 10,
-  "userMedicines": ["阿莫西林", "布洛芬"],
-  "userExaminations": ["血常规", "胸部X光"],
-  "examinationDetails": [...]
-}
-```
-
-### 检查相关
-
-#### 搜索检查项目
-```http
-GET /api/examinations/search?q=血常规
-```
-
-#### 疾病/症状搜索
-```http
-GET /api/examinations/disease-search?q=发热咳嗽
-```
-
-#### 获取检查结果
-```http
-GET /api/examinations/:id/result
-```
-
-### 药品相关
-
-#### 搜索药品
-```http
-GET /api/medicines/search?q=感冒
-```
-
-#### 获取药品详情
-```http
-GET /api/medicines/:id
-```
-
-### 设置相关
-
-#### 获取设置
-```http
-GET /api/settings
-```
-
-#### 更新设置
-```http
-POST /api/settings
-Content-Type: application/json
-
-{
-  "apiUrl": "https://api.deepseek.com/v1/chat/completions",
-  "apiKey": "sk-xxxx",
-  "model": "deepseek-chat",
-  "enabled": true
-}
-```
-
-## 🛡️ 安全特性
-
-- **API 密钥加密**：所有 API 密钥使用 AES-256-CBC 加密存储
-- **密钥遮罩**：前端显示时自动遮罩（如 `***abcd`）
-- **本地存储**：病历数据存储在浏览器 localStorage，不上传服务器
-- **无数据收集**：系统不收集任何用户数据
-
-## 🎨 自定义配置
-
-### 修改药品数据库
-
-编辑 `server/data/medicines.json`：
-
-```json
-{
-  "id": "med_001",
-  "name": "阿莫西林胶囊",
-  "category": "抗生素",
-  "indications": ["上呼吸道感染", "泌尿系统感染"],
-  "price": 15.5,
-  "unit": "盒",
-  "dosage": "口服，一次1粒，一日3次"
-}
-```
-
-### 修改检查数据库
-
-编辑 `server/data/examinations.json`：
-
-```json
-{
-  "id": "exam_blood",
-  "name": "血常规",
-  "category": "检验科",
-  "price": 25,
-  "description": "血常规检查"
-}
-```
-
-### 修改疾病数据库
-
-编辑 `server/data/diseases.json`：
-
-```json
-{
-  "name": "急性上呼吸道感染",
-  "alias": ["感冒", "上感"],
-  "symptoms": ["发热", "咳嗽", "咽痛"],
-  "exams": ["exam_blood", "exam_crp"]
-}
-```
-
-## 🐳 Docker 部署（可选）
-
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-
-COPY server/package*.json ./server/
-RUN cd server && npm install --production
-
-COPY . .
-
-EXPOSE 3003
-
-CMD ["node", "server/server.js"]
-```
-
+答：检查Node.js版本是不是18以上：
 ```bash
-docker build -t medical-game .
-docker run -p 3003:3003 -v ./data:/app/server/data medical-game
+node --version
+```
+如果版本太低，去 https://nodejs.org 下载最新版本。
+
+### 问：启动后打不开网页？
+
+答：检查端口3003有没有被占用：
+```bash
+lsof -i :3003
+```
+如果被占用，可以改端口，在 `.env` 里加一行：
+```
+PORT=3004
 ```
 
-## 🤝 贡献指南
+### 问：AI功能不工作？
 
-欢迎贡献代码、报告问题或提出建议！
+答：点击设置里的"测试连接"按钮，看看能不能连上AI服务。如果连不上，检查：
+1. API地址对不对
+2. API密钥对不对
+3. 网络能不能访问AI服务
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
+### 问：怎么备份数据？
 
-## 📝 更新日志
+答：数据文件在 `server/data/` 目录下，直接复制这个文件夹就行。
 
-### v1.0.0 (2026-05-23)
-- ✨ 初始发布
-- 🩺 完整的问诊系统
-- 🔬 100+ 检查项目
-- 💊 86+ 常用药品
-- 📋 医院标准病历格式
-- 📊 AI 评分系统
-- 🔍 疾病/症状搜索
-- 🔄 复诊病人支持
+## 许可证
 
-## 📄 许可证
+这个项目使用 MIT 许可证，可以免费使用，也可以修改和分发。
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+## 联系方式
 
-## 🙏 致谢
+有问题或者建议，可以在GitHub上提Issue。
 
-- [DeepSeek](https://deepseek.com/) - 提供 AI API 支持
-- [Node.js](https://nodejs.org/) - 运行时环境
-- [Express](https://expressjs.com/) - Web 框架
-- 所有贡献者和测试人员
-
-## 📞 联系方式
-
-- 问题反馈：[GitHub Issues](https://github.com/your-username/medical-game/issues)
-- 邮箱：your-email@example.com
-
----
-
-**⚕️ 免责声明**：本系统仅用于医疗教育和培训目的，不构成医疗建议。请勿将本系统用于实际医疗诊断或治疗。
+项目地址：https://github.com/peterli222/medical-game
