@@ -1,0 +1,270 @@
+const { v4: uuidv4 } = require('uuid');
+
+// 药品数据库（扁平结构，无分类）
+const MEDICINE_DATABASE = [
+  { id: 'med_001', name: '阿莫西林胶囊', specification: '0.25g×24粒', price: 12.5, manufacturer: '华北制药', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['上呼吸道感染', '泌尿生殖道感染', '皮肤软组织感染', '急性单纯性淋病', '下呼吸道感染'], adverseReactions: ['恶心', '腹泻', '皮疹', '药物热', '哮喘'] },
+  { id: 'med_002', name: '头孢克肟片', specification: '0.1g×12片', price: 28.0, manufacturer: '白云山', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['呼吸道感染', '泌尿道感染', '胆道感染', '中耳炎', '猩红热'], adverseReactions: ['腹泻', '恶心', '腹痛', '皮疹', '转氨酶升高'] },
+  { id: 'med_003', name: '左氧氟沙星片', specification: '0.5g×6片', price: 35.0, manufacturer: '第一三共', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['呼吸道感染', '泌尿道感染', '皮肤软组织感染', '胃肠道感染', '前列腺炎'], adverseReactions: ['恶心', '腹泻', '头痛', '失眠', '肝功能异常'] },
+  { id: 'med_004', name: '阿奇霉素片', specification: '0.25g×6片', price: 22.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['呼吸道感染', '皮肤软组织感染', '泌尿生殖道感染', '中耳炎', '鼻窦炎'], adverseReactions: ['腹泻', '恶心', '腹痛', '皮疹', '肝功能异常'] },
+  { id: 'med_005', name: '克拉霉素片', specification: '0.25g×8片', price: 18.5, manufacturer: '雅培', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['呼吸道感染', '皮肤软组织感染', '幽门螺杆菌感染', '中耳炎', '牙源性感染'], adverseReactions: ['腹泻', '恶心', '味觉异常', '转氨酶升高', '头痛'] },
+  { id: 'med_182', name: '头孢呋辛酯片', specification: '0.25g×12片', price: 32.0, manufacturer: '葛兰素史克', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['呼吸道感染', '泌尿道感染', '皮肤软组织感染', '淋病'], adverseReactions: ['腹泻', '恶心', '皮疹', '转氨酶升高'] },
+  { id: 'med_183', name: '甲硝唑片', specification: '0.2g×100片', price: 8.0, manufacturer: '华北制药', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['厌氧菌感染', '阿米巴病', '滴虫病', '牙周感染'], adverseReactions: ['恶心', '金属味', '头痛', '周围神经病变'] },
+  { id: 'med_184', name: '莫西沙星片', specification: '0.4g×5片', price: 68.0, manufacturer: '拜耳', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['社区获得性肺炎', '急性鼻窦炎', '慢性支气管炎急性发作'], adverseReactions: ['恶心', '腹泻', '头晕', 'QT间期延长'] },
+  { id: 'med_185', name: '头孢地尼胶囊', specification: '0.1g×10粒', price: 45.0, manufacturer: '安斯泰来', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['呼吸道感染', '皮肤软组织感染', '泌尿道感染', '中耳炎'], adverseReactions: ['腹泻', '恶心', '皮疹'] },
+  { id: 'med_006', name: '对乙酰氨基酚片', specification: '0.5g×20片', price: 8.0, manufacturer: '强生', dosage: '口服', frequency: '必要时', unit: '片', indications: ['发热', '头痛', '关节痛', '肌肉痛', '牙痛', '痛经'], adverseReactions: ['恶心', '皮疹', '肝损害', '粒细胞减少', '过敏反应'] },
+  { id: 'med_007', name: '布洛芬缓释胶囊', specification: '0.3g×20粒', price: 15.0, manufacturer: '中美史克', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['发热', '头痛', '关节痛', '肌肉痛', '牙痛', '痛经', '风湿性关节炎'], adverseReactions: ['恶心', '腹痛', '消化道溃疡', '头晕', '皮疹'] },
+  { id: 'med_008', name: '双氯芬酸钠片', specification: '25mg×30片', price: 12.0, manufacturer: '诺华', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['类风湿关节炎', '骨关节炎', '痛风急性发作', '痛经', '腰背痛'], adverseReactions: ['胃肠道反应', '头晕', '皮疹', '肝功能异常', '肾功能损害'] },
+  { id: 'med_009', name: '塞来昔布胶囊', specification: '0.2g×10粒', price: 45.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日1-2次', unit: '粒', indications: ['骨关节炎', '类风湿关节炎', '急性疼痛', '痛经'], adverseReactions: ['腹泻', '消化不良', '腹痛', '头痛', '心血管风险'] },
+  { id: 'med_010', name: '阿司匹林肠溶片', specification: '100mg×30片', price: 6.5, manufacturer: '拜耳', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['抗血小板聚集', '预防心脑血管疾病', '解热镇痛', '抗风湿'], adverseReactions: ['胃肠道反应', '出血倾向', '过敏反应', '瑞夷综合征', '水杨酸中毒'] },
+  { id: 'med_011', name: '阿托伐他汀钙片', specification: '20mg×7片', price: 38.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每晚1次', unit: '片', indications: ['高胆固醇血症', '混合型高脂血症', '冠心病', '脑卒中预防'], adverseReactions: ['肌痛', '转氨酶升高', '消化不良', '恶心', '横纹肌溶解'] },
+  { id: 'med_012', name: '氨氯地平片', specification: '5mg×7片', price: 25.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['高血压', '慢性稳定性心绞痛', '变异型心绞痛'], adverseReactions: ['头痛', '水肿', '面部潮红', '心悸', '头晕'] },
+  { id: 'med_013', name: '美托洛尔片', specification: '25mg×20片', price: 15.0, manufacturer: '阿斯利康', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['高血压', '心绞痛', '心律失常', '心力衰竭', '甲亢'], adverseReactions: ['心动过缓', '低血压', '疲劳', '头晕', '支气管痉挛'] },
+  { id: 'med_014', name: '硝酸甘油片', specification: '0.5mg×100片', price: 18.0, manufacturer: '北京益民', dosage: '舌下含服', frequency: '必要时', unit: '片', indications: ['心绞痛急性发作', '心力衰竭', '血压调控'], adverseReactions: ['头痛', '面部潮红', '低血压', '心悸', '头晕'] },
+  { id: 'med_186', name: '缬沙坦胶囊', specification: '80mg×7粒', price: 35.0, manufacturer: '诺华', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['高血压', '心力衰竭', '心肌梗死后'], adverseReactions: ['头晕', '低血压', '高钾血症', '肾功能异常'] },
+  { id: 'med_187', name: '氯吡格雷片', specification: '75mg×7片', price: 85.0, manufacturer: '赛诺菲', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['急性冠脉综合征', '预防心脑血管事件', '外周动脉疾病'], adverseReactions: ['出血', '腹泻', '腹痛', '皮疹', '血小板减少'] },
+  { id: 'med_188', name: '硝苯地平控释片', specification: '30mg×7片', price: 28.0, manufacturer: '拜耳', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['高血压', '冠心病', '心绞痛'], adverseReactions: ['头痛', '水肿', '面部潮红', '心悸', '便秘'] },
+  { id: 'med_189', name: '厄贝沙坦片', specification: '0.15g×7片', price: 32.0, manufacturer: '赛诺菲', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['高血压', '合并高血压的2型糖尿病肾病'], adverseReactions: ['头晕', '低血压', '高钾血症', '腹泻'] },
+  { id: 'med_190', name: '贝那普利片', specification: '10mg×14片', price: 38.0, manufacturer: '诺华', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['高血压', '心力衰竭', '糖尿病肾病'], adverseReactions: ['干咳', '头晕', '低血压', '高钾血症', '血管性水肿'] },
+  { id: 'med_191', name: '非诺贝特胶囊', specification: '0.2g×10粒', price: 42.0, manufacturer: '雅培', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['高甘油三酯血症', '混合型高脂血症'], adverseReactions: ['腹痛', '腹泻', '恶心', '肌痛', '肝功能异常'] },
+  { id: 'med_192', name: '瑞舒伐他汀钙片', specification: '10mg×7片', price: 45.0, manufacturer: '阿斯利康', dosage: '口服', frequency: '每晚1次', unit: '片', indications: ['高胆固醇血症', '混合型高脂血症', '动脉粥样硬化'], adverseReactions: ['头痛', '肌痛', '便秘', '转氨酶升高'] },
+  { id: 'med_015', name: '氨溴索片', specification: '30mg×20片', price: 12.0, manufacturer: '勃林格殷格翰', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['急性支气管炎', '慢性支气管炎', '支气管哮喘', '支气管扩张', '肺炎'], adverseReactions: ['恶心', '胃部不适', '腹泻', '皮疹', '过敏反应'] },
+  { id: 'med_016', name: '复方甘草片', specification: '100片', price: 8.5, manufacturer: '天津力生', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['镇咳', '祛痰', '急性支气管炎', '慢性支气管炎'], adverseReactions: ['恶心', '呕吐', '便秘', '水肿', '血压升高'] },
+  { id: 'med_017', name: '孟鲁司特钠片', specification: '10mg×5片', price: 32.0, manufacturer: '默沙东', dosage: '口服', frequency: '每晚1次', unit: '片', indications: ['哮喘预防和长期治疗', '过敏性鼻炎', '运动诱发性支气管收缩'], adverseReactions: ['头痛', '腹痛', '咽炎', '皮疹', '行为异常'] },
+  { id: 'med_018', name: '沙丁胺醇气雾剂', specification: '100μg×200揿', price: 28.0, manufacturer: '葛兰素史克', dosage: '吸入', frequency: '必要时', unit: '揿', indications: ['支气管哮喘急性发作', '慢性阻塞性肺疾病', '运动诱发性支气管痉挛'], adverseReactions: ['心悸', '手抖', '头痛', '肌肉痉挛', '低钾血症'] },
+  { id: 'med_199', name: '布地奈德福莫特罗吸入粉雾剂', specification: '160/4.5μg×60吸', price: 280.0, manufacturer: '阿斯利康', dosage: '吸入', frequency: '每日2次', unit: '吸', indications: ['支气管哮喘', '慢性阻塞性肺疾病'], adverseReactions: ['口腔念珠菌感染', '声音嘶哑', '心悸', '头痛'] },
+  { id: 'med_200', name: '噻托溴铵粉吸入剂', specification: '18μg×10粒', price: 210.0, manufacturer: '勃林格殷格翰', dosage: '吸入', frequency: '每日1次', unit: '粒', indications: ['慢性阻塞性肺疾病', '支气管痉挛', '肺气肿'], adverseReactions: ['口干', '便秘', '尿潴留', '视力模糊'] },
+  { id: 'med_201', name: '氨茶碱片', specification: '0.1g×100片', price: 5.0, manufacturer: '天津力生', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['支气管哮喘', '慢性阻塞性肺疾病', '心源性哮喘'], adverseReactions: ['恶心', '呕吐', '心悸', '失眠', '癫痫发作'] },
+  { id: 'med_202', name: '异丙托溴铵气雾剂', specification: '20μg×200揿', price: 65.0, manufacturer: '勃林格殷格翰', dosage: '吸入', frequency: '每日3-4次', unit: '揿', indications: ['慢性阻塞性肺疾病', '支气管哮喘'], adverseReactions: ['口干', '咳嗽', '头痛', '恶心'] },
+  { id: 'med_019', name: '奥美拉唑肠溶胶囊', specification: '20mg×14粒', price: 18.0, manufacturer: '阿斯利康', dosage: '口服', frequency: '每日1-2次', unit: '粒', indications: ['胃溃疡', '十二指肠溃疡', '胃食管反流病', '卓-艾综合征', '幽门螺杆菌根除'], adverseReactions: ['头痛', '腹泻', '恶心', '腹痛', '维生素B12缺乏'] },
+  { id: 'med_020', name: '多潘立酮片', specification: '10mg×30片', price: 12.5, manufacturer: '西安杨森', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['消化不良', '腹胀', '恶心', '呕吐', '胃轻瘫'], adverseReactions: ['口干', '头痛', '腹泻', '皮疹', '泌乳素升高'] },
+  { id: 'med_021', name: '蒙脱石散', specification: '3g×10袋', price: 15.0, manufacturer: '博福益普生', dosage: '口服', frequency: '每日3次', unit: '袋', indications: ['急性腹泻', '慢性腹泻', '食管炎', '胃炎', '结肠炎'], adverseReactions: ['便秘', '腹胀'] },
+  { id: 'med_022', name: '乳果糖口服溶液', specification: '100ml', price: 28.0, manufacturer: '雅培', dosage: '口服', frequency: '每日1-2次', unit: 'ml', indications: ['便秘', '肝性脑病', '需要软化大便的情况'], adverseReactions: ['腹胀', '腹痛', '腹泻', '恶心', '电解质紊乱'] },
+  { id: 'med_023', name: '复方消化酶胶囊', specification: '20粒', price: 35.0, manufacturer: '韩林', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['消化不良', '食欲不振', '腹胀', '慢性胰腺炎'], adverseReactions: ['恶心', '腹泻', '口腔溃疡', '过敏反应'] },
+  { id: 'med_193', name: '泮托拉唑钠肠溶片', specification: '40mg×7片', price: 42.0, manufacturer: '武田', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['胃溃疡', '十二指肠溃疡', '胃食管反流病', '卓-艾综合征'], adverseReactions: ['头痛', '腹泻', '恶心', '腹胀'] },
+  { id: 'med_194', name: '枸橼酸铋钾片', specification: '0.3g×40片', price: 25.0, manufacturer: '丽珠集团', dosage: '口服', frequency: '每日4次', unit: '片', indications: ['胃溃疡', '十二指肠溃疡', '幽门螺杆菌根除'], adverseReactions: ['舌/粪便变黑', '恶心', '便秘', '铋蓄积'] },
+  { id: 'med_195', name: '莫沙必利片', specification: '5mg×20片', price: 22.0, manufacturer: '鲁南贝特', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['功能性消化不良', '胃食管反流病', '糖尿病胃轻瘫'], adverseReactions: ['腹泻', '腹痛', '口干', '头晕'] },
+  { id: 'med_196', name: '复方谷氨酰胺肠溶胶囊', specification: '12粒', price: 38.0, manufacturer: '地奥集团', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['肠易激综合征', '慢性腹泻', '肠道功能紊乱'], adverseReactions: ['恶心', '腹胀'] },
+  { id: 'med_197', name: '美沙拉嗪肠溶片', specification: '0.5g×80片', price: 168.0, manufacturer: '辉凌', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['溃疡性结肠炎', '克罗恩病'], adverseReactions: ['恶心', '腹泻', '腹痛', '头痛', '肝功能异常'] },
+  { id: 'med_198', name: '铝碳酸镁片', specification: '0.5g×30片', price: 25.0, manufacturer: '拜耳', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['胃酸过多', '胃炎', '胃溃疡', '胆汁反流性胃炎'], adverseReactions: ['便秘', '腹泻', '恶心'] },
+  { id: 'med_024', name: '二甲双胍片', specification: '0.5g×20片', price: 8.0, manufacturer: '中美上海施贵宝', dosage: '口服', frequency: '每日2-3次', unit: '片', indications: ['2型糖尿病', '多囊卵巢综合征', '胰岛素抵抗'], adverseReactions: ['恶心', '腹泻', '腹痛', '乳酸酸中毒', '维生素B12缺乏'] },
+  { id: 'med_025', name: '格列美脲片', specification: '2mg×30片', price: 25.0, manufacturer: '赛诺菲', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['2型糖尿病', '饮食控制不佳的糖尿病'], adverseReactions: ['低血糖', '恶心', '呕吐', '腹泻', '皮疹', '肝功能异常'] },
+  { id: 'med_026', name: '阿卡波糖片', specification: '50mg×30片', price: 35.0, manufacturer: '拜耳', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['2型糖尿病', '降低餐后血糖', '糖耐量异常'], adverseReactions: ['腹胀', '腹泻', '腹痛', '排气增多', '肝功能异常'] },
+  { id: 'med_027', name: '胰岛素注射液', specification: '300单位/3ml', price: 68.0, manufacturer: '诺和诺德', dosage: '皮下注射', frequency: '遵医嘱', unit: '单位', indications: ['1型糖尿病', '2型糖尿病', '糖尿病酮症酸中毒', '妊娠糖尿病'], adverseReactions: ['低血糖', '注射部位脂肪萎缩', '过敏反应', '水钠潴留', '视力模糊'] },
+  { id: 'med_028', name: '佐匹克隆片', specification: '7.5mg×12片', price: 22.0, manufacturer: '赛诺菲', dosage: '口服', frequency: '睡前', unit: '片', indications: ['失眠症', '入睡困难', '睡眠维持障碍'], adverseReactions: ['口苦', '口干', '嗜睡', '头痛', '头晕', '依赖性'] },
+  { id: 'med_029', name: '阿普唑仑片', specification: '0.4mg×20片', price: 12.0, manufacturer: '江苏恩华', dosage: '口服', frequency: '睡前', unit: '片', indications: ['焦虑症', '失眠', '恐惧症', '癫痫'], adverseReactions: ['嗜睡', '头晕', '乏力', '依赖性', '记忆障碍'] },
+  { id: 'med_030', name: '甲钴胺片', specification: '0.5mg×20片', price: 28.0, manufacturer: '卫材', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['周围神经病', '巨幼细胞性贫血', '维生素B12缺乏', '糖尿病神经病变'], adverseReactions: ['恶心', '腹泻', '皮疹', '食欲不振', '头痛'] },
+  { id: 'med_203', name: '加巴喷丁胶囊', specification: '0.3g×20粒', price: 45.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['神经病理性疼痛', '带状疱疹后神经痛', '癫痫辅助治疗'], adverseReactions: ['嗜睡', '头晕', '疲劳', '外周水肿', '共济失调'] },
+  { id: 'med_204', name: '普瑞巴林胶囊', specification: '75mg×8粒', price: 68.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['神经病理性疼痛', '纤维肌痛', '癫痫辅助治疗'], adverseReactions: ['嗜睡', '头晕', '体重增加', '外周水肿', '视物模糊'] },
+  { id: 'med_205', name: '卡马西平片', specification: '0.2g×100片', price: 12.0, manufacturer: '北京诺华', dosage: '口服', frequency: '每日2-3次', unit: '片', indications: ['癫痫', '三叉神经痛', '躁狂症', '中枢性尿崩症'], adverseReactions: ['头晕', '嗜睡', '皮疹', '肝功能异常', '粒细胞减少', '低钠血症'] },
+  { id: 'med_206', name: '丙戊酸钠缓释片', specification: '0.5g×30片', price: 35.0, manufacturer: '赛诺菲', dosage: '口服', frequency: '每日1-2次', unit: '片', indications: ['癫痫', '双相情感障碍', '偏头痛预防'], adverseReactions: ['恶心', '呕吐', '肝毒性', '血小板减少', '震颤', '体重增加'] },
+  { id: 'med_031', name: '维生素C片', specification: '0.1g×100片', price: 5.0, manufacturer: '东北制药', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['坏血病', '维生素C缺乏', '增强免疫', '过敏性疾病辅助治疗'], adverseReactions: ['胃肠道不适', '腹泻', '泌尿系结石', '草酸盐尿'] },
+  { id: 'med_032', name: '维生素B1片', specification: '10mg×100片', price: 4.5, manufacturer: '天津力生', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['脚气病', '维生素B1缺乏', '周围神经炎', '消化不良'], adverseReactions: ['恶心', '皮疹', '过敏反应'] },
+  { id: 'med_033', name: '复合维生素B片', specification: '100片', price: 8.0, manufacturer: '上海信谊', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['维生素B族缺乏', '营养不良', '口角炎', '脚气病', '糙皮病'], adverseReactions: ['恶心', '尿液变黄'] },
+  { id: 'med_034', name: '钙尔奇D片', specification: '60片', price: 58.0, manufacturer: '惠氏', dosage: '口服', frequency: '每日1-2次', unit: '片', indications: ['骨质疏松症', '佝偻病', '妊娠哺乳期钙补充', '维生素D缺乏'], adverseReactions: ['便秘', '腹胀', '恶心', '高钙血症', '肾结石'] },
+  { id: 'med_035', name: '莫匹罗星软膏', specification: '5g', price: 18.0, manufacturer: '中美史克', dosage: '外用', frequency: '每日3次', unit: 'g', indications: ['脓疱疮', '毛囊炎', '疖肿', '皮肤感染'], adverseReactions: ['灼烧感', '刺痛', '瘙痒', '皮疹'] },
+  { id: 'med_036', name: '红霉素软膏', specification: '10g', price: 3.5, manufacturer: '北京双吉', dosage: '外用', frequency: '每日2次', unit: 'g', indications: ['脓疱疮', '轻度烧伤', '溃疡面感染', '寻常痤疮'], adverseReactions: ['局部灼烧感', '刺痛', '皮肤干燥', '过敏反应'] },
+  { id: 'med_037', name: '炉甘石洗剂', specification: '100ml', price: 8.0, manufacturer: '上海运佳', dosage: '外用', frequency: '每日多次', unit: 'ml', indications: ['荨麻疹', '湿疹', '皮肤瘙痒', '日晒伤', '蚊虫叮咬'], adverseReactions: ['局部干燥', '轻微刺激'] },
+  { id: 'med_038', name: '碘伏消毒液', specification: '100ml', price: 6.0, manufacturer: '江西草珊瑚', dosage: '外用', frequency: '必要时', unit: 'ml', indications: ['皮肤消毒', '黏膜消毒', '伤口消毒', '手术部位消毒'], adverseReactions: ['局部刺激', '过敏反应', '皮肤着色'] },
+  { id: 'med_039', name: '地奈德乳膏', specification: '15g', price: 28.0, manufacturer: '重庆华邦', dosage: '外用', frequency: '每日2次', unit: 'g', indications: ['湿疹', '皮炎', '银屑病', '皮肤瘙痒'], adverseReactions: ['灼烧感', '皮肤萎缩', '毛囊炎'] },
+  { id: 'med_040', name: '酮康唑乳膏', specification: '15g', price: 12.0, manufacturer: '西安杨森', dosage: '外用', frequency: '每日2次', unit: 'g', indications: ['体癣', '股癣', '手足癣', '花斑癣', '皮肤念珠菌病'], adverseReactions: ['局部刺激', '灼烧感', '瘙痒'] },
+  { id: 'med_041', name: '氯雷他定片', specification: '10mg×6片', price: 18.0, manufacturer: '先灵葆雅', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['过敏性鼻炎', '荨麻疹', '皮肤瘙痒', '过敏性结膜炎'], adverseReactions: ['头痛', '嗜睡', '口干', '乏力'] },
+  { id: 'med_042', name: '西替利嗪片', specification: '10mg×12片', price: 15.0, manufacturer: '鲁南制药', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['过敏性鼻炎', '荨麻疹', '湿疹', '皮肤瘙痒'], adverseReactions: ['嗜睡', '口干', '头痛', '乏力'] },
+  { id: 'med_043', name: '依巴斯汀片', specification: '10mg×10片', price: 25.0, manufacturer: '西班牙Cheminova', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['荨麻疹', '过敏性鼻炎', '湿疹', '皮炎'], adverseReactions: ['头痛', '口干', '嗜睡', '腹痛'] },
+  { id: 'med_044', name: '酮替芬片', specification: '1mg×60片', price: 8.0, manufacturer: '上海衡山', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['过敏性鼻炎', '支气管哮喘', '荨麻疹', '湿疹'], adverseReactions: ['嗜睡', '口干', '头晕', '恶心'] },
+  { id: 'med_045', name: '孟鲁司特钠咀嚼片', specification: '5mg×5片', price: 38.0, manufacturer: '默沙东', dosage: '口服', frequency: '每晚1次', unit: '片', indications: ['过敏性鼻炎', '哮喘预防', '运动诱发性支气管收缩'], adverseReactions: ['头痛', '腹痛', '咽炎', '皮疹'] },
+  { id: 'med_046', name: '布地奈德鼻喷剂', specification: '64μg×120喷', price: 68.0, manufacturer: '阿斯利康', dosage: '鼻喷', frequency: '每日1-2次', unit: '喷', indications: ['过敏性鼻炎', '血管运动性鼻炎', '鼻息肉'], adverseReactions: ['鼻出血', '鼻干', '咽部刺激', '头痛'] },
+  { id: 'med_047', name: '泼尼松片', specification: '5mg×100片', price: 8.0, manufacturer: '天津力生', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['系统性红斑狼疮', '严重哮喘', '肾病综合征', '过敏性疾病', '自身免疫性疾病'], adverseReactions: ['库欣综合征', '血糖升高', '骨质疏松', '感染风险增加', '消化道溃疡'] },
+  { id: 'med_048', name: '地塞米松片', specification: '0.75mg×100片', price: 5.0, manufacturer: '天津力生', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['过敏性疾病', '炎症性疾病', '脑水肿', '化疗止吐'], adverseReactions: ['库欣综合征', '血糖升高', '失眠', '精神兴奋'] },
+  { id: 'med_049', name: '甲泼尼龙片', specification: '4mg×30片', price: 22.0, manufacturer: '辉瑞', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['严重过敏', '哮喘持续状态', '系统性红斑狼疮', '肾病综合征'], adverseReactions: ['库欣综合征', '骨质疏松', '血糖升高', '感染风险'] },
+  { id: 'med_050', name: '左甲状腺素钠片', specification: '50μg×100片', price: 28.0, manufacturer: '默克', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['甲状腺功能减退', '甲状腺癌术后', '甲状腺肿'], adverseReactions: ['心悸', '手抖', '失眠', '体重减轻', '骨质疏松'] },
+  { id: 'med_051', name: '左氧氟沙星滴眼液', specification: '5ml', price: 18.0, manufacturer: '参天制药', dosage: '滴眼', frequency: '每日3-4次', unit: '滴', indications: ['细菌性结膜炎', '角膜炎', '泪囊炎', '术后感染预防'], adverseReactions: ['眼部刺激', '视力模糊', '眼干', '味觉异常'] },
+  { id: 'med_052', name: '玻璃酸钠滴眼液', specification: '10ml', price: 35.0, manufacturer: '参天制药', dosage: '滴眼', frequency: '每日4-6次', unit: '滴', indications: ['干眼症', '角膜上皮损伤', '术后角膜保护'], adverseReactions: ['眼部刺激', '视力模糊', '眼部分泌物'] },
+  { id: 'med_053', name: '妥布霉素滴眼液', specification: '5ml', price: 15.0, manufacturer: '爱尔康', dosage: '滴眼', frequency: '每日4-6次', unit: '滴', indications: ['细菌性结膜炎', '角膜溃疡', '泪囊炎', '术后感染'], adverseReactions: ['眼部刺激', '过敏反应', '角膜毒性'] },
+  { id: 'med_054', name: '普拉洛芬滴眼液', specification: '5ml', price: 28.0, manufacturer: '千寿制药', dosage: '滴眼', frequency: '每日4次', unit: '滴', indications: ['眼睑炎', '结膜炎', '角膜炎', '术后炎症'], adverseReactions: ['眼部刺激', '... [OUTPUT TRUNCATED - 2621 chars omitted out of 52621 total'] },
+  { id: 'med_066', name: '板蓝根颗粒', specification: '10g×20袋', price: 15.0, manufacturer: '白云山', dosage: '口服', frequency: '每日3次', unit: '袋', indications: ['上呼吸道感染', '咽炎', '扁桃体炎', '病毒性感冒'], adverseReactions: ['腹泻', '恶心'] },
+  { id: 'med_067', name: '六味地黄丸', specification: '200丸', price: 18.0, manufacturer: '同仁堂', dosage: '口服', frequency: '每日2次', unit: '丸', indications: ['肾阴虚', '腰膝酸软', '头晕耳鸣', '盗汗遗精'], adverseReactions: ['腹泻', '腹胀'] },
+  { id: 'med_068', name: '金匮肾气丸', specification: '200丸', price: 22.0, manufacturer: '同仁堂', dosage: '口服', frequency: '每日2次', unit: '丸', indications: ['肾阳虚', '腰膝酸软', '畏寒肢冷', '水肿'], adverseReactions: ['口干', '上火'] },
+  { id: 'med_069', name: '秋水仙碱片', specification: '0.5mg×20片', price: 12.0, manufacturer: '西双版纳', dosage: '口服', frequency: '急性发作时', unit: '片', indications: ['痛风急性发作', '痛风预防', '家族性地中海热'], adverseReactions: ['腹泻', '恶心', '呕吐', '腹痛', '骨髓抑制'] },
+  { id: 'med_070', name: '非布司他片', specification: '40mg×14片', price: 58.0, manufacturer: '安斯泰来', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['痛风', '高尿酸血症'], adverseReactions: ['肝功能异常', '恶心', '关节痛', '皮疹'] },
+  { id: 'med_071', name: '苯溴马隆片', specification: '50mg×10片', price: 35.0, manufacturer: '德国赫曼', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['高尿酸血症', '痛风', '尿酸性肾病'], adverseReactions: ['腹泻', '皮疹', '肝功能异常', '肾结石'] },
+  { id: 'med_072', name: '舍曲林片', specification: '50mg×14片', price: 45.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['抑郁症', '强迫症', '恐慌症', '社交焦虑障碍'], adverseReactions: ['恶心', '腹泻', '失眠', '头痛', '性功能障碍'] },
+  { id: 'med_073', name: '文拉法辛缓释胶囊', specification: '75mg×14粒', price: 68.0, manufacturer: '惠氏', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['抑郁症', '广泛性焦虑障碍', '社交恐惧症'], adverseReactions: ['恶心', '头痛', '失眠', '口干', '血压升高'] },
+  { id: 'med_074', name: '奥氮平片', specification: '10mg×7片', price: 85.0, manufacturer: '礼来', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['精神分裂症', '双相障碍', '难治性抑郁症'], adverseReactions: ['嗜睡', '体重增加', '血糖升高', '血脂异常', '锥体外系反应'] },
+  { id: 'med_075', name: '氟西汀胶囊', specification: '20mg×14粒', price: 35.0, manufacturer: '礼来', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['抑郁症', '强迫症', '神经性贪食', '恐慌症'], adverseReactions: ['恶心', '失眠', '头痛', '焦虑', '性功能障碍'] },
+  { id: 'med_076', name: '坦索罗辛缓释胶囊', specification: '0.2mg×10粒', price: 38.0, manufacturer: '安斯泰来', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['前列腺增生', '排尿困难', '尿频', '尿急'], adverseReactions: ['头晕', '鼻塞', '射精异常', '低血压'] },
+  { id: 'med_077', name: '非那雄胺片', specification: '5mg×10片', price: 45.0, manufacturer: '默沙东', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['前列腺增生', '男性脱发'], adverseReactions: ['性功能障碍', '乳房胀痛', '抑郁', '过敏反应'] },
+  { id: 'med_078', name: '三金片', specification: '0.3g×72片', price: 22.0, manufacturer: '三金药业', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['尿路感染', '膀胱炎', '肾盂肾炎', '尿频尿急'], adverseReactions: ['恶心', '腹泻'] },
+  { id: 'med_079', name: '甲巯咪唑片', specification: '10mg×50片', price: 15.0, manufacturer: '默克', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['甲状腺功能亢进', 'Graves病', '甲状腺危象'], adverseReactions: ['皮疹', '关节痛', '肝功能异常', '粒细胞缺乏'] },
+  { id: 'med_080', name: '丙硫氧嘧啶片', specification: '50mg×100片', price: 12.0, manufacturer: '上海复星', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['甲亢', '甲状腺危象', '妊娠期甲亢'], adverseReactions: ['皮疹', '肝功能异常', '粒细胞缺乏', '关节痛'] },
+  { id: 'med_081', name: '碳酸钙D3片', specification: '60片', price: 58.0, manufacturer: '惠氏', dosage: '口服', frequency: '每日1-2次', unit: '片', indications: ['骨质疏松', '佝偻病', '钙缺乏', '妊娠哺乳期补钙'], adverseReactions: ['便秘', '腹胀', '高钙血症'] },
+  { id: 'med_082', name: '阿仑膦酸钠片', specification: '70mg×4片', price: 68.0, manufacturer: '默沙东', dosage: '口服', frequency: '每周1次', unit: '片', indications: ['骨质疏松症', 'Paget骨病', '糖皮质激素诱导的骨质疏松'], adverseReactions: ['食管溃疡', '腹痛', '恶心', '骨痛', '肌肉痛'] },
+  { id: 'med_083', name: '阿昔洛韦片', specification: '0.2g×30片', price: 12.0, manufacturer: '湖北科益', dosage: '口服', frequency: '每日5次', unit: '片', indications: ['带状疱疹', '单纯疱疹', '水痘', '生殖器疱疹'], adverseReactions: ['恶心', '头痛', '头晕', '肾功能损害'] },
+  { id: 'med_084', name: '氯雷他定糖浆', specification: '60ml', price: 28.0, manufacturer: '先灵葆雅', dosage: '口服', frequency: '每日1次', unit: 'ml', indications: ['荨麻疹', '过敏性鼻炎', '皮肤瘙痒', '湿疹'], adverseReactions: ['嗜睡', '头痛', '口干', '乏力'] },
+  { id: 'med_085', name: '特比萘芬片', specification: '0.25g×7片', price: 45.0, manufacturer: '诺华', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['甲癣', '体癣', '股癣', '手足癣'], adverseReactions: ['恶心', '腹泻', '皮疹', '肝功能异常', '味觉障碍'] },
+  { id: 'med_087', name: '阿昔洛韦片', specification: '0.2g×30片', price: 12.0, manufacturer: '湖北科益', dosage: '口服', frequency: '每日5次', unit: '片', indications: ['单纯疱疹', '带状疱疹', '水痘'], adverseReactions: ['恶心', '头痛', '肾功能损害'] },
+  { id: 'med_088', name: '奥司他韦胶囊', specification: '75mg×10粒', price: 68.0, manufacturer: '宜昌东阳光', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['甲型流感', '乙型流感'], adverseReactions: ['恶心', '呕吐', '头痛'] },
+  { id: 'med_089', name: '利巴韦林片', specification: '0.1g×24片', price: 8.0, manufacturer: '四川百利', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['呼吸道合胞病毒感染', '病毒性肝炎'], adverseReactions: ['溶血性贫血', '致畸', '恶心'] },
+  { id: 'med_090', name: '恩替卡韦片', specification: '0.5mg×7片', price: 120.0, manufacturer: '正大天晴', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['慢性乙型肝炎', '乙肝病毒复制活跃'], adverseReactions: ['头痛', '疲劳', '眩晕'] },
+  { id: 'med_091', name: '替诺福韦酯片', specification: '300mg×30片', price: 380.0, manufacturer: '葛兰素史克', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['慢性乙型肝炎', 'HIV感染'], adverseReactions: ['肾功能损害', '骨质疏松', '乳酸酸中毒'] },
+  { id: 'med_092', name: '更昔洛韦注射液', specification: '0.25g', price: 45.0, manufacturer: '湖北科益', dosage: '静脉滴注', frequency: '每日2次', unit: '支', indications: ['巨细胞病毒感染', '免疫缺陷病毒感染'], adverseReactions: ['骨髓抑制', '肾功能损害', '发热'] },
+  { id: 'med_093', name: '干扰素α-2b注射液', specification: '300万IU', price: 85.0, manufacturer: '科兴生物', dosage: '皮下注射', frequency: '隔日1次', unit: '支', indications: ['慢性乙型肝炎', '丙型肝炎', '尖锐湿疣'], adverseReactions: ['发热', '疲劳', '白细胞减少', '抑郁'] },
+  { id: 'med_094', name: '拉米夫定片', specification: '0.1g×14片', price: 180.0, manufacturer: '葛兰素史克', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['慢性乙型肝炎', 'HIV感染'], adverseReactions: ['头痛', '恶心', '腹痛', '耐药性'] },
+  { id: 'med_095', name: '玛巴洛沙韦片', specification: '20mg×2片', price: 198.0, manufacturer: '盐野义', dosage: '口服', frequency: '单次', unit: '片', indications: ['甲型流感', '乙型流感'], adverseReactions: ['腹泻', '恶心', '支气管炎'] },
+  { id: 'med_096', name: '阿比多尔片', specification: '0.1g×6片', price: 35.0, manufacturer: '石家庄四药', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['流感', '呼吸道病毒感染'], adverseReactions: ['恶心', '腹泻', '头晕'] },
+  { id: 'med_097', name: '氟康唑胶囊', specification: '50mg×6粒', price: 18.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['念珠菌感染', '隐球菌感染', '皮肤真菌病'], adverseReactions: ['恶心', '腹痛', '肝功能异常', '皮疹'] },
+  { id: 'med_098', name: '伊曲康唑胶囊', specification: '0.1g×14粒', price: 85.0, manufacturer: '西安杨森', dosage: '口服', frequency: '每日1-2次', unit: '粒', indications: ['甲癣', '体癣', '深部真菌感染'], adverseReactions: ['恶心', '腹胀', '肝功能异常', '心力衰竭'] },
+  { id: 'med_099', name: '特比萘芬片', specification: '0.25g×7片', price: 42.0, manufacturer: '诺华', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['甲癣', '体癣', '股癣', '手足癣'], adverseReactions: ['恶心', '腹泻', '味觉障碍', '肝功能异常'] },
+  { id: 'med_100', name: '伏立康唑片', specification: '50mg×10片', price: 280.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['侵袭性曲霉病', '念珠菌血症'], adverseReactions: ['视觉障碍', '肝功能异常', '皮疹', '心律失常'] },
+  { id: 'med_101', name: '卡泊芬净注射液', specification: '50mg', price: 680.0, manufacturer: '默沙东', dosage: '静脉滴注', frequency: '每日1次', unit: '支', indications: ['侵袭性念珠菌感染', '侵袭性曲霉病'], adverseReactions: ['发热', '恶心', '肝功能异常'] },
+  { id: 'med_102', name: '两性霉素B注射液', specification: '25mg', price: 120.0, manufacturer: '华北制药', dosage: '静脉滴注', frequency: '每日1次', unit: '支', indications: ['深部真菌感染', '隐球菌脑膜炎'], adverseReactions: ['寒战', '高热', '肾功能损害', '低钾血症'] },
+  { id: 'med_103', name: '克霉唑阴道片', specification: '0.5g×1片', price: 15.0, manufacturer: '拜耳', dosage: '阴道给药', frequency: '每日1次', unit: '片', indications: ['念珠菌性阴道炎', '霉菌性阴道炎'], adverseReactions: ['局部刺激', '灼烧感'] },
+  { id: 'med_104', name: '硝呋太尔阴道软胶囊', specification: '0.25g×6粒', price: 38.0, manufacturer: '意大利多帕', dosage: '阴道给药', frequency: '每晚1次', unit: '粒', indications: ['细菌性阴道病', '滴虫性阴道炎', '念珠菌性阴道炎'], adverseReactions: ['局部刺激', '瘙痒'] },
+  { id: 'med_105', name: '多烯磷脂酰胆碱胶囊', specification: '0.228g×24粒', price: 58.0, manufacturer: '赛诺菲', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['脂肪肝', '药物性肝损伤', '肝硬化'], adverseReactions: ['腹泻', '腹胀'] },
+  { id: 'med_106', name: '双环醇片', specification: '25mg×9片', price: 32.0, manufacturer: '北京协和', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['慢性肝炎', '药物性肝损伤'], adverseReactions: ['头晕', '恶心', '腹胀'] },
+  { id: 'med_107', name: '水飞蓟素胶囊', specification: '0.14g×10粒', price: 45.0, manufacturer: '德国马博士', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['慢性肝炎', '脂肪肝', '中毒性肝损伤'], adverseReactions: ['腹泻', '腹胀', '恶心'] },
+  { id: 'med_108', name: '熊去氧胆酸胶囊', specification: '0.25g×25粒', price: 165.0, manufacturer: '德国福克', dosage: '口服', frequency: '每日2-3次', unit: '粒', indications: ['胆囊胆固醇结石', '胆汁淤积性肝病', '胆汁反流性胃炎'], adverseReactions: ['腹泻', '腹痛', '恶心'] },
+  { id: 'med_109', name: '复方甘草酸苷片', specification: '100片', price: 68.0, manufacturer: '日本米诺发源', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['慢性肝病', '湿疹', '皮肤炎'], adverseReactions: ['低钾血症', '血压升高', '水肿'] },
+  { id: 'med_110', name: '谷胱甘肽片', specification: '0.1g×36片', price: 38.0, manufacturer: '重庆药友', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['药物性肝损伤', '酒精性肝病', '重金属中毒'], adverseReactions: ['恶心', '呕吐', '头痛'] },
+  { id: 'med_111', name: '腺苷蛋氨酸肠溶片', specification: '0.5g×10片', price: 128.0, manufacturer: '雅培', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['肝内胆汁淤积', '抑郁症'], adverseReactions: ['恶心', '腹泻', '焦虑'] },
+  { id: 'med_112', name: '茴三硫片', specification: '25mg×12片', price: 22.0, manufacturer: '成都地奥', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['胆囊炎', '胆石症', '胆汁分泌不足'], adverseReactions: ['恶心', '腹胀', '皮疹'] },
+  { id: 'med_113', name: '复方鳖甲软肝片', specification: '0.5g×48片', price: 68.0, manufacturer: '内蒙古福瑞', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['肝纤维化', '早期肝硬化'], adverseReactions: ['恶心', '腹泻'] },
+  { id: 'med_114', name: '消炎利胆片', specification: '100片', price: 15.0, manufacturer: '广东万年青', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['急性胆囊炎', '胆管炎', '胆石症'], adverseReactions: ['恶心', '腹泻'] },
+  { id: 'med_115', name: '黄体酮胶囊', specification: '0.1g×6粒', price: 35.0, manufacturer: '浙江仙琚', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['先兆流产', '习惯性流产', '黄体功能不全', '闭经'], adverseReactions: ['头晕', '嗜睡', '恶心', '乳房胀痛'] },
+  { id: 'med_116', name: '地屈孕酮片', specification: '10mg×20片', price: 128.0, manufacturer: '雅培', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['先兆流产', '子宫内膜异位症', '功能失调性子宫出血', '闭经'], adverseReactions: ['头痛', '恶心', '乳房胀痛', '月经不规则'] },
+  { id: 'med_117', name: '米非司酮片', specification: '25mg×6片', price: 45.0, manufacturer: '上海新华联', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['药物流产', '子宫肌瘤', '紧急避孕'], adverseReactions: ['恶心', '呕吐', '腹痛', '阴道出血', '乏力'] },
+  { id: 'med_118', name: '缩宫素注射液', specification: '1ml:10单位', price: 3.5, manufacturer: '上海禾丰', dosage: '肌注/静滴', frequency: '遵医嘱', unit: '支', indications: ['产后出血', '引产', '催产'], adverseReactions: ['子宫强直收缩', '低血压', '过敏反应', '水中毒'] },
+  { id: 'med_119', name: '叶酸片', specification: '0.4mg×31片', price: 8.0, manufacturer: '北京斯利安', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['预防胎儿神经管缺陷', '巨幼细胞性贫血', '叶酸缺乏'], adverseReactions: ['恶心', '腹胀', '过敏反应'] },
+  { id: 'med_120', name: '戊酸雌二醇片', specification: '1mg×21片', price: 68.0, manufacturer: '拜耳', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['更年期综合征', '卵巢功能不全', '闭经', '骨质疏松预防'], adverseReactions: ['恶心', '乳房胀痛', '头痛', '水肿', '血栓风险'] },
+  { id: 'med_121', name: '克罗米芬胶囊', specification: '50mg×10粒', price: 25.0, manufacturer: '上海衡山', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['无排卵性不孕', '多囊卵巢综合征'], adverseReactions: ['卵巢增大', '潮热', '腹胀', '视觉模糊', '多胎妊娠'] },
+  { id: 'med_122', name: '硝呋太尔片', specification: '0.2g×20片', price: 42.0, manufacturer: '意大利多帕', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['细菌性阴道病', '滴虫性阴道炎', '念珠菌性阴道炎', '泌尿道感染'], adverseReactions: ['恶心', '呕吐', '皮疹'] },
+  { id: 'med_123', name: '布洛芬混悬液', specification: '100ml:2g', price: 22.0, manufacturer: '上海强生', dosage: '口服', frequency: '必要时', unit: 'ml', indications: ['小儿发热', '轻中度疼痛'], adverseReactions: ['恶心', '呕吐', '腹痛', '过敏反应'] },
+  { id: 'med_124', name: '对乙酰氨基酚混悬滴剂', specification: '15ml:1.5g', price: 18.0, manufacturer: '上海强生', dosage: '口服', frequency: '必要时', unit: 'ml', indications: ['小儿发热', '轻度疼痛'], adverseReactions: ['恶心', '皮疹', '肝损害'] },
+  { id: 'med_125', name: '蒙脱石散', specification: '3g×10袋', price: 25.0, manufacturer: '博福-益普生', dosage: '口服', frequency: '每日3次', unit: '袋', indications: ['小儿腹泻', '急性腹泻', '慢性腹泻', '食管炎'], adverseReactions: ['便秘', '腹胀'] },
+  { id: 'med_126', name: '双歧杆菌四联活菌片', specification: '0.5g×24片', price: 35.0, manufacturer: '杭州龙达新科', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['小儿腹泻', '便秘', '消化不良', '肠道菌群失调'], adverseReactions: ['腹胀'] },
+  { id: 'med_127', name: '小儿氨酚黄那敏颗粒', specification: '10袋', price: 12.0, manufacturer: '哈药集团', dosage: '口服', frequency: '每日3次', unit: '袋', indications: ['小儿感冒', '发热', '头痛', '鼻塞', '流涕'], adverseReactions: ['嗜睡', '口干', '恶心'] },
+  { id: 'med_128', name: '阿奇霉素干混悬剂', specification: '0.1g×6袋', price: 28.0, manufacturer: '辉瑞', dosage: '口服', frequency: '每日1次', unit: '袋', indications: ['小儿呼吸道感染', '中耳炎', '鼻窦炎', '皮肤感染'], adverseReactions: ['腹泻', '恶心', '腹痛', '皮疹'] },
+  { id: 'med_129', name: '头孢克洛干混悬剂', specification: '0.125g×12袋', price: 32.0, manufacturer: '礼来', dosage: '口服', frequency: '每日3次', unit: '袋', indications: ['小儿呼吸道感染', '泌尿道感染', '中耳炎', '皮肤感染'], adverseReactions: ['腹泻', '皮疹', '恶心'] },
+  { id: 'med_130', name: '赖氨葡锌颗粒', specification: '5g×18袋', price: 38.0, manufacturer: '海南慧谷', dosage: '口服', frequency: '每日2次', unit: '袋', indications: ['小儿厌食', '生长发育不良', '锌缺乏'], adverseReactions: ['恶心', '便秘'] },
+  { id: 'med_131', name: '氨基葡萄糖胶囊', specification: '0.75g×30粒', price: 98.0, manufacturer: '爱尔兰罗达', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['骨关节炎', '关节退行性变', '关节疼痛'], adverseReactions: ['恶心', '腹泻', '便秘', '头痛', '皮疹'] },
+  { id: 'med_132', name: '双醋瑞因胶囊', specification: '50mg×30粒', price: 85.0, manufacturer: '法国TRB', dosage: '口服', frequency: '每日1次', unit: '粒', indications: ['骨关节炎', '退行性关节病'], adverseReactions: ['腹泻', '腹痛', '恶心', '肝功能异常'] },
+  { id: 'med_133', name: '骨化三醇胶丸', specification: '0.25μg×10粒', price: 45.0, manufacturer: '罗氏', dosage: '口服', frequency: '每日1-2次', unit: '粒', indications: ['骨质疏松', '佝偻病', '甲状旁腺功能减退', '肾性骨病'], adverseReactions: ['高钙血症', '恶心', '呕吐', '多尿'] },
+  { id: 'med_134', name: '仙灵骨葆胶囊', specification: '0.5g×40粒', price: 48.0, manufacturer: '贵州同济堂', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['骨质疏松症', '骨折', '骨关节炎', '缺血性骨坏死'], adverseReactions: ['恶心', '腹胀', '皮疹'] },
+  { id: 'med_135', name: '玻璃酸钠注射液', specification: '2ml:20mg', price: 280.0, manufacturer: '生化学工业', dosage: '关节腔注射', frequency: '每周1次', unit: '支', indications: ['骨关节炎', '肩关节周围炎', '退行性关节病'], adverseReactions: ['关节疼痛', '肿胀', '局部发热'] },
+  { id: 'med_136', name: '洛索洛芬钠片', specification: '60mg×20片', price: 35.0, manufacturer: '第一三共', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['类风湿关节炎', '骨关节炎', '腰痛', '肩周炎', '术后疼痛'], adverseReactions: ['胃肠道反应', '头晕', '水肿', '肝功能异常'] },
+  { id: 'med_137', name: '盐酸氨基葡萄糖片', specification: '0.75g×60片', price: 128.0, manufacturer: '爱尔兰罗达', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['全身各部位骨关节炎', '关节退行性变'], adverseReactions: ['胃肠道不适', '头痛', '皮疹'] },
+  { id: 'med_138', name: '右美沙芬片', specification: '15mg×20片', price: 15.0, manufacturer: '上海强生', dosage: '口服', frequency: '每日3-4次', unit: '片', indications: ['干咳', '感冒咳嗽', '支气管炎咳嗽'], adverseReactions: ['头晕', '嗜睡', '恶心', '便秘'] },
+  { id: 'med_139', name: '氨溴索口服液', specification: '100ml:0.6g', price: 22.0, manufacturer: '勃林格殷格翰', dosage: '口服', frequency: '每日3次', unit: 'ml', indications: ['急慢性支气管炎', '支气管哮喘', '痰液粘稠'], adverseReactions: ['恶心', '呕吐', '腹泻', '过敏反应'] },
+  { id: 'med_140', name: '复方甘草片', specification: '100片', price: 8.0, manufacturer: '上海医药', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['咳嗽', '支气管炎'], adverseReactions: ['恶心', '便秘', '依赖性'] },
+  { id: 'med_141', name: '乙酰半胱氨酸泡腾片', specification: '0.6g×6片', price: 38.0, manufacturer: '赞邦', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['痰液粘稠', '慢性支气管炎', '肺气肿', '支气管扩张'], adverseReactions: ['恶心', '呕吐', '腹泻', '过敏反应'] },
+  { id: 'med_142', name: '羧甲司坦片', specification: '0.25g×12片', price: 12.0, manufacturer: '广州白云山', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['痰液粘稠', '慢性支气管炎', '支气管哮喘'], adverseReactions: ['恶心', '腹泻', '皮疹'] },
+  { id: 'med_143', name: '复方甲氧那明胶囊', specification: '60粒', price: 32.0, manufacturer: '第一三共', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['支气管哮喘', '喘息性支气管炎', '咳嗽'], adverseReactions: ['嗜睡', '口干', '恶心', '心悸'] },
+  { id: 'med_144', name: '孟鲁司特钠片', specification: '10mg×5片', price: 45.0, manufacturer: '默沙东', dosage: '口服', frequency: '每晚1次', unit: '片', indications: ['哮喘预防和长期治疗', '过敏性鼻炎'], adverseReactions: ['头痛', '腹痛', '咳嗽', '情绪变化'] },
+  { id: 'med_145', name: '肾上腺素注射液', specification: '1ml:1mg', price: 5.0, manufacturer: '上海禾丰', dosage: '皮下/肌注/静注', frequency: '必要时', unit: '支', indications: ['过敏性休克', '心脏骤停', '严重哮喘', '支气管痉挛'], adverseReactions: ['心悸', '头痛', '高血压', '心律失常', '焦虑'] },
+  { id: 'med_146', name: '地塞米松注射液', specification: '1ml:5mg', price: 2.0, manufacturer: '上海通用', dosage: '肌注/静注', frequency: '遵医嘱', unit: '支', indications: ['过敏性休克', '严重感染', '脑水肿', '哮喘持续状态'], adverseReactions: ['高血糖', '感染风险', '骨质疏松', '消化道溃疡'] },
+  { id: 'med_147', name: '阿托品注射液', specification: '1ml:0.5mg', price: 1.5, manufacturer: '上海禾丰', dosage: '皮下/静注', frequency: '必要时', unit: '支', indications: ['有机磷中毒', '缓慢性心律失常', '内脏绞痛', '麻醉前用药'], adverseReactions: ['口干', '视力模糊', '心悸', '尿潴留', '便秘'] },
+  { id: 'med_148', name: '纳洛酮注射液', specification: '1ml:0.4mg', price: 15.0, manufacturer: '北京四环', dosage: '肌注/静注', frequency: '必要时', unit: '支', indications: ['阿片类药物中毒', '急性酒精中毒', '呼吸抑制'], adverseReactions: ['恶心', '呕吐', '心动过速', '血压升高', '戒断症状'] },
+  { id: 'med_149', name: '多巴胺注射液', specification: '2ml:20mg', price: 3.0, manufacturer: '上海禾丰', dosage: '静脉滴注', frequency: '遵医嘱', unit: '支', indications: ['休克', '低血压', '心力衰竭'], adverseReactions: ['心悸', '头痛', '恶心', '心律失常', '外周缺血'] },
+  { id: 'med_150', name: '呋塞米注射液', specification: '2ml:20mg', price: 2.5, manufacturer: '上海禾丰', dosage: '肌注/静注', frequency: '遵医嘱', unit: '支', indications: ['急性肺水肿', '脑水肿', '急性肾衰竭', '高血压危象'], adverseReactions: ['低钾血症', '低钠血症', '脱水', '耳毒性'] },
+  { id: 'med_151', name: '环孢素软胶囊', specification: '25mg×50粒', price: 280.0, manufacturer: '诺华', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['器官移植排斥反应', '自身免疫性疾病', '重症肌无力'], adverseReactions: ['肾毒性', '高血压', '多毛', '牙龈增生', '肝毒性'] },
+  { id: 'med_152', name: '他克莫司胶囊', specification: '1mg×50粒', price: 450.0, manufacturer: '安斯泰来', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['器官移植排斥反应', '难治性特应性皮炎'], adverseReactions: ['肾毒性', '高血糖', '神经毒性', '高血压', '感染风险'] },
+  { id: 'med_153', name: '吗替麦考酚酯胶囊', specification: '0.25g×40粒', price: 320.0, manufacturer: '罗氏', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['器官移植排斥反应', '狼疮性肾炎'], adverseReactions: ['白细胞减少', '腹泻', '恶心', '感染风险', '贫血'] },
+  { id: 'med_154', name: '硫唑嘌呤片', specification: '50mg×100片', price: 85.0, manufacturer: '上海医药', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['器官移植排斥反应', '类风湿关节炎', '系统性红斑狼疮'], adverseReactions: ['骨髓抑制', '肝毒性', '恶心', '感染风险'] },
+  { id: 'med_155', name: '甲氨蝶呤片', specification: '2.5mg×16片', price: 18.0, manufacturer: '上海医药', dosage: '口服', frequency: '每周1次', unit: '片', indications: ['类风湿关节炎', '银屑病', '异位妊娠', '肿瘤化疗'], adverseReactions: ['骨髓抑制', '肝毒性', '口腔溃疡', '恶心', '肺毒性'] },
+  { id: 'med_156', name: '来氟米特片', specification: '10mg×16片', price: 128.0, manufacturer: '中美史克', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['类风湿关节炎', '狼疮性肾炎'], adverseReactions: ['腹泻', '肝功能异常', '脱发', '皮疹', '感染风险'] },
+  { id: 'med_157', name: '白芍总苷胶囊', specification: '0.3g×60粒', price: 68.0, manufacturer: '宁波立华', dosage: '口服', frequency: '每日2次', unit: '粒', indications: ['类风湿关节炎', '系统性红斑狼疮', '干燥综合征'], adverseReactions: ['腹泻', '腹痛', '恶心'] },
+  { id: 'med_158', name: '昂丹司琼片', specification: '8mg×6片', price: 35.0, manufacturer: '葛兰素史克', dosage: '口服', frequency: '每日2-3次', unit: '片', indications: ['化疗呕吐', '放疗呕吐', '术后恶心呕吐'], adverseReactions: ['头痛', '便秘', '腹泻', '疲劳'] },
+  { id: 'med_159', name: '格拉司琼注射液', specification: '3ml:3mg', price: 28.0, manufacturer: '罗氏', dosage: '静脉注射', frequency: '每日1-2次', unit: '支', indications: ['化疗呕吐', '放疗呕吐'], adverseReactions: ['头痛', '便秘', '腹泻', '肝功能异常'] },
+  { id: 'med_160', name: '重组人粒细胞刺激因子注射液', specification: '0.3ml:75μg', price: 180.0, manufacturer: '齐鲁制药', dosage: '皮下注射', frequency: '每日1次', unit: '支', indications: ['化疗后白细胞减少', '骨髓移植', '再生障碍性贫血'], adverseReactions: ['骨痛', '发热', '乏力', '脾肿大'] },
+  { id: 'med_161', name: '重组人促红素注射液', specification: '1ml:3000IU', price: 120.0, manufacturer: '沈阳三生', dosage: '皮下注射', frequency: '每周3次', unit: '支', indications: ['肾性贫血', '化疗后贫血'], adverseReactions: ['高血压', '头痛', '关节痛', '血栓风险'] },
+  { id: 'med_162', name: '醋酸甲地孕酮分散片', specification: '160mg×30片', price: 168.0, manufacturer: '百时美施贵宝', dosage: '口服', frequency: '每日1次', unit: '片', indications: ['乳腺癌', '子宫内膜癌', '肿瘤恶病质', '厌食'], adverseReactions: ['水肿', '体重增加', '血栓风险', '阴道出血'] },
+  { id: 'med_163', name: '参芪扶正注射液', specification: '250ml', price: 98.0, manufacturer: '丽珠集团', dosage: '静脉滴注', frequency: '每日1次', unit: '瓶', indications: ['肿瘤辅助治疗', '免疫功能低下', '气虚证'], adverseReactions: ['发热', '皮疹', '恶心'] },
+  { id: 'med_164', name: '康艾注射液', specification: '20ml×6支', price: 158.0, manufacturer: '长白山制药', dosage: '静脉滴注', frequency: '每日1次', unit: '支', indications: ['肿瘤辅助治疗', '免疫功能低下', '乏力'], adverseReactions: ['发热', '皮疹', '恶心', '头晕'] },
+  { id: 'med_165', name: '硝酸甘油注射液', specification: '1ml:5mg', price: 8.0, manufacturer: '北京益民', dosage: '静脉滴注', frequency: '遵医嘱', unit: '支', indications: ['急性心肌梗死', '不稳定心绞痛', '急性心力衰竭'], adverseReactions: ['头痛', '低血压', '心动过速', '面红'] },
+  { id: 'med_166', name: '注射用阿替普酶', specification: '50mg', price: 2680.0, manufacturer: '勃林格殷格翰', dosage: '静脉注射', frequency: '单次', unit: '支', indications: ['急性心肌梗死', '急性脑梗死', '肺栓塞'], adverseReactions: ['出血', '过敏反应', '再灌注心律失常'] },
+  { id: 'med_167', name: '肝素钠注射液', specification: '2ml:12500单位', price: 12.0, manufacturer: '上海第一生化', dosage: '皮下/静注', frequency: '遵医嘱', unit: '支', indications: ['深静脉血栓', '肺栓塞', 'DIC', '血液透析抗凝'], adverseReactions: ['出血', '血小板减少', '过敏反应', '骨质疏松'] },
+  { id: 'med_168', name: '依诺肝素钠注射液', specification: '0.4ml:4000AXaIU', price: 68.0, manufacturer: '赛诺菲', dosage: '皮下注射', frequency: '每日1-2次', unit: '支', indications: ['深静脉血栓预防', '不稳定心绞痛', '急性冠脉综合征'], adverseReactions: ['出血', '注射部位血肿', '血小板减少'] },
+  { id: 'med_169', name: '丹参注射液', specification: '10ml×5支', price: 35.0, manufacturer: '正大青春宝', dosage: '静脉滴注', frequency: '每日1次', unit: '支', indications: ['冠心病', '心绞痛', '脑梗死'], adverseReactions: ['皮疹', '恶心', '头痛', '过敏反应'] },
+  { id: 'med_170', name: '血塞通注射液', specification: '2ml:0.2g', price: 25.0, manufacturer: '昆明制药', dosage: '静脉滴注', frequency: '每日1次', unit: '支', indications: ['脑血管病', '冠心病', '视网膜血管阻塞'], adverseReactions: ['皮疹', '恶心', '发热'] },
+  { id: 'med_171', name: '磷酸肌酸钠注射液', specification: '1g', price: 65.0, manufacturer: '哈尔滨誉衡', dosage: '静脉滴注', frequency: '每日1-2次', unit: '支', indications: ['心肌缺血', '心脏手术心肌保护', '心力衰竭'], adverseReactions: ['低血压', '恶心', '头晕'] },
+  { id: 'med_172', name: '双歧杆菌三联活菌胶囊', specification: '0.21g×36粒', price: 35.0, manufacturer: '上海信谊', dosage: '口服', frequency: '每日2-3次', unit: '粒', indications: ['腹泻', '便秘', '消化不良', '肠道菌群失调'], adverseReactions: ['腹胀'] },
+  { id: 'med_173', name: '酪酸梭菌活菌片', specification: '0.35g×20片', price: 42.0, manufacturer: '青岛东海药业', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['腹泻', '消化不良', '肠道菌群失调', '伪膜性肠炎'], adverseReactions: ['腹胀'] },
+  { id: 'med_174', name: '地衣芽孢杆菌活菌胶囊', specification: '0.25g×24粒', price: 28.0, manufacturer: '东北制药', dosage: '口服', frequency: '每日3次', unit: '粒', indications: ['腹泻', '消化不良', '肠道菌群失调'], adverseReactions: ['腹胀'] },
+  { id: 'med_175', name: '布拉氏酵母菌散', specification: '0.25g×6袋', price: 48.0, manufacturer: '法国百科达', dosage: '口服', frequency: '每日2次', unit: '袋', indications: ['急性腹泻', '抗生素相关性腹泻', '旅行者腹泻'], adverseReactions: ['腹胀', '口干'] },
+  { id: 'med_176', name: '复方嗜酸乳杆菌片', specification: '0.5g×20片', price: 22.0, manufacturer: '通化金马', dosage: '口服', frequency: '每日3次', unit: '片', indications: ['肠道菌群失调', '消化不良', '腹泻'], adverseReactions: ['腹胀'] },
+  { id: 'med_177', name: '阿苯达唑片', specification: '0.2g×10片', price: 8.0, manufacturer: '湖北汇中', dosage: '口服', frequency: '单次或遵医嘱', unit: '片', indications: ['蛔虫病', '蛲虫病', '钩虫病', '鞭虫病', '囊虫病'], adverseReactions: ['恶心', '腹痛', '腹泻', '头痛', '肝功能异常'] },
+  { id: 'med_178', name: '甲苯咪唑片', specification: '0.1g×6片', price: 12.0, manufacturer: '西安杨森', dosage: '口服', frequency: '每日2次', unit: '片', indications: ['蛔虫病', '蛲虫病', '钩虫病', '鞭虫病'], adverseReactions: ['腹痛', '腹泻', '头痛', '皮疹'] },
+  { id: 'med_179', name: '吡喹酮片', specification: '0.2g×100片', price: 35.0, manufacturer: '南京制药', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['血吸虫病', '华支睾吸虫病', '绦虫病', '囊虫病'], adverseReactions: ['头晕', '头痛', '恶心', '腹痛', '发热'] },
+  { id: 'med_180', name: '青蒿素哌喹片', specification: '每片含青蒿素62.5mg哌喹375mg×6片', price: 28.0, manufacturer: '桂林南药', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['疟疾', '恶性疟', '间日疟'], adverseReactions: ['恶心', '呕吐', '腹痛', '头晕', '皮疹'] },
+  { id: 'med_181', name: '氯喹片', specification: '0.25g×100片', price: 15.0, manufacturer: '上海中西', dosage: '口服', frequency: '遵医嘱', unit: '片', indications: ['疟疾', '阿米巴肝脓肿', '类风湿关节炎'], adverseReactions: ['视网膜毒性', '恶心', '头痛', '心律失常'] }
+];
+
+class Prescription {
+  constructor(data = {}) {
+    this.id = data.id || uuidv4();
+    this.patientId = data.patientId;
+    this.medicines = data.medicines || [];
+    this.totalPrice = data.totalPrice || 0;
+    this.diagnosis = data.diagnosis || '';
+    this.notes = data.notes || '';
+    this.createdAt = data.createdAt || new Date().toISOString();
+    this.status = data.status || 'pending';
+  }
+
+  calculateTotalPrice() {
+    this.totalPrice = this.medicines.reduce((total, med) => {
+      return total + (med.price * med.quantity);
+    }, 0);
+    return this.totalPrice;
+  }
+
+  toJSON() {
+    return {
+      id: this.id,
+      patientId: this.patientId,
+      medicines: this.medicines,
+      totalPrice: this.totalPrice,
+      diagnosis: this.diagnosis,
+      notes: this.notes,
+      createdAt: this.createdAt,
+      status: this.status
+    };
+  }
+}
+
+class PrescriptionItem {
+  constructor(data = {}) {
+    this.medicineId = data.medicineId;
+    this.name = data.name;
+    this.specification = data.specification;
+    this.manufacturer = data.manufacturer;
+    this.price = data.price;
+    this.quantity = data.quantity || 1;
+    this.dosage = data.dosage;
+    this.frequency = data.frequency;
+    this.unit = data.unit;
+    this.usage = data.usage || '';
+    this.days = data.days || 7;
+  }
+
+  toJSON() {
+    return {
+      medicineId: this.medicineId,
+      name: this.name,
+      specification: this.specification,
+      manufacturer: this.manufacturer,
+      price: this.price,
+      quantity: this.quantity,
+      dosage: this.dosage,
+      frequency: this.frequency,
+      unit: this.unit,
+      usage: this.usage,
+      days: this.days
+    };
+  }
+}
+
+module.exports = {
+  MEDICINE_DATABASE,
+  Prescription,
+  PrescriptionItem
+};

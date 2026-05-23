@@ -1,0 +1,21 @@
+{
+  "name": "medical-simulator-server",
+  "version": "1.0.0",
+  "description": "医疗问诊模拟游戏后端服务",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "axios": "^1.16.1",
+    "body-parser": "^1.20.5",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
