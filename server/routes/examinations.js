@@ -134,15 +134,16 @@ router.post('/:id/execute', async (req, res) => {
     if (llmService.isEnabled() && agent.currentCase) {
       try {
         const patientInfo = patient ? { name: patient.name, age: patient.age, gender: patient.gender } : { name: '患者', age: 30, gender };
-        const aiDescription = await llmService.generateExaminationDescription(
+        const aiResult = await llmService.generateExaminationDescription(
           order.examinationType,
           order.bodyPart,
           patientInfo,
           agent.currentCase
         );
-        if (aiDescription) {
-          result.aiDescription = aiDescription;
+        if (aiResult && aiResult.report) {
+          result.aiDescription = aiResult.report;
           result.aiGenerated = true;
+          result._usage = aiResult._usage || null;
         }
       } catch (e) {
         console.error('AI检查报告生成失败，使用本地结果:', e.message);
@@ -199,10 +200,11 @@ router.post('/:id/execute-stream', async (req, res) => {
     
     // 尝试使用AI流式生成检查报告描述
     let aiDescription = '';
+    let aiUsage = null;
     if (llmService.isEnabled() && agent.currentCase) {
       try {
         const patientInfo = patient ? { name: patient.name, age: patient.age, gender: patient.gender } : { name: '患者', age: 30, gender };
-        aiDescription = await llmService.generateExaminationDescriptionStream(
+        const aiResult = await llmService.generateExaminationDescriptionStream(
           order.examinationType,
           order.bodyPart,
           patientInfo,
@@ -211,7 +213,9 @@ router.post('/:id/execute-stream', async (req, res) => {
             sendEvent('token', { token, full: fullContent });
           }
         );
-        if (aiDescription) {
+        if (aiResult && aiResult.report) {
+          aiDescription = aiResult.report;
+          aiUsage = aiResult._usage || null;
           result.aiDescription = aiDescription;
           result.aiGenerated = true;
         }
@@ -225,7 +229,8 @@ router.post('/:id/execute-stream', async (req, res) => {
     
     sendEvent('result', { 
       result: completedOrder.toJSON().result,
-      aiDescription: aiDescription || null
+      aiDescription: aiDescription || null,
+      _usage: aiUsage
     });
     sendEvent('done', { orderId: req.params.id });
     

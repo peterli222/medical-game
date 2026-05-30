@@ -15,6 +15,11 @@ yarn-error.log*
 server/data/ai-settings.json
 server/data/*.json.bak
 
+# Backup files
+backups/
+*.bak
+*.bak.*
+
 # Logs
 logs/
 *.log

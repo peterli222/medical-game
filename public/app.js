@@ -118,6 +118,107 @@ function debounce(func, wait) {
     };
 }
 
+
+
+// ============================================================
+// API 限流器 — 每分钟最多10次请求，超出排队等待
+// ============================================================
+const apiRateLimiter = {
+    maxPerMinute: 10,
+    requests: [],       // 时间戳数组
+    queue: [],          // 排队中的 { resolve, reject, fn, label }
+    running: 0,         // 正在执行的请求数
+    barEl: null,        // 状态条DOM
+
+    // 初始化状态条
+    _ensureBar() {
+        if (this.barEl) return;
+        this.barEl = document.createElement('div');
+        this.barEl.id = 'rateLimitBar';
+        this.barEl.className = 'rate-limit-bar hidden';
+        document.body.appendChild(this.barEl);
+    },
+
+    _updateBar() {
+        this._ensureBar();
+        const now = Date.now();
+        // 清理过期记录
+        this.requests = this.requests.filter(t => now - t < 60000);
+        const used = this.requests.length;
+        const queued = this.queue.length;
+        const active = this.running;
+
+        if (queued === 0 && active === 0) {
+            this.barEl.classList.add('hidden');
+            return;
+        }
+
+        this.barEl.classList.remove('hidden');
+        if (queued > 0) {
+            const waitSec = Math.ceil(queued / this.maxPerMinute * 60 / this.maxPerMinute);
+            this.barEl.innerHTML = `⏳ 排队中：${queued} 个请求等待 | 已用 ${used}/${this.maxPerMinute} 次/分钟`;
+            this.barEl.className = 'rate-limit-bar queuing';
+        } else {
+            this.barEl.innerHTML = `🔄 执行中：${active} 个请求 | 已用 ${used}/${this.maxPerMinute} 次/分钟`;
+            this.barEl.className = 'rate-limit-bar active';
+        }
+    },
+
+    // 核心方法：包装一个异步函数，自动限流+排队
+    async execute(fn, label = 'AI请求') {
+        this._ensureBar();
+        const now = Date.now();
+        this.requests = this.requests.filter(t => now - t < 60000);
+
+        // 如果还有额度，直接执行
+        if (this.requests.length < this.maxPerMinute && this.running < this.maxPerMinute) {
+            return this._run(fn, label);
+        }
+
+        // 否则排队
+        this._updateBar();
+        return new Promise((resolve, reject) => {
+            this.queue.push({ resolve, reject, fn, label });
+            this._updateBar();
+            this._drainQueue();
+        });
+    },
+
+    async _run(fn, label) {
+        this.requests.push(Date.now());
+        this.running++;
+        this._updateBar();
+        try {
+            const result = await fn();
+            return result;
+        } finally {
+            this.running--;
+            this._updateBar();
+            setTimeout(() => this._drainQueue(), 500);
+        }
+    },
+
+    _drainQueue() {
+        if (this.queue.length === 0) return;
+        const now = Date.now();
+        this.requests = this.requests.filter(t => now - t < 60000);
+        if (this.requests.length >= this.maxPerMinute) {
+            // 还没腾出额度，等最早的过期
+            const oldest = this.requests[0];
+            const waitMs = 60000 - (now - oldest) + 100;
+            setTimeout(() => this._drainQueue(), Math.max(waitMs, 1000));
+            return;
+        }
+        // 取出一个排队请求执行
+        const item = this.queue.shift();
+        if (item) {
+            this._run(item.fn, item.label).then(item.resolve).catch(item.reject);
+        }
+    }
+};
+
+
+
 // DOM 元素
 const elements = {
     // 导航
@@ -168,6 +269,38 @@ const elements = {
     clearAllBtn: document.getElementById('clearAllBtn'),
     recordStatus: document.getElementById('recordStatus'),
     
+    // 手术
+    surgerySearchInput: document.getElementById('surgerySearchInput'),
+    surgerySearchDropdown: document.getElementById('surgerySearchDropdown'),
+    surgeryTypeSelect: document.getElementById('surgeryTypeSelect'),
+    surgeryCategorySelect: document.getElementById('surgeryCategorySelect'),
+    anesthesiaSelect: document.getElementById('anesthesiaSelect'),
+    surgeryDiagnosis: document.getElementById('surgeryDiagnosis'),
+    surgeryIndication: document.getElementById('surgeryIndication'),
+    submitSurgeryBtn: document.getElementById('submitSurgeryBtn'),
+    aiArrangeSurgeryBtn: document.getElementById('aiArrangeSurgeryBtn'),
+    surgeryListContent: document.getElementById('surgeryListContent'),
+    surgeryStatusFilter: document.getElementById('surgeryStatusFilter'),
+    
+    // 住院
+    admissionDeptSelect: document.getElementById('admissionDeptSelect'),
+    admissionDiagnosis: document.getElementById('admissionDiagnosis'),
+    admissionTreatment: document.getElementById('admissionTreatment'),
+    admissionDoctor: document.getElementById('admissionDoctor'),
+    submitAdmissionBtn: document.getElementById('submitAdmissionBtn'),
+    aiAdmitBtn: document.getElementById('aiAdmitBtn'),
+    admissionListContent: document.getElementById('admissionListContent'),
+    
+    // 会诊
+    consultationTypeSelect: document.getElementById('consultationTypeSelect'),
+    consultReqDept: document.getElementById('consultReqDept'),
+    consultConsultDept: document.getElementById('consultConsultDept'),
+    consultReason: document.getElementById('consultReason'),
+    consultDiagnosis: document.getElementById('consultDiagnosis'),
+    submitConsultationBtn: document.getElementById('submitConsultationBtn'),
+    aiFillConsultationBtn: document.getElementById('aiFillConsultationBtn'),
+    consultationListContent: document.getElementById('consultationListContent'),
+    
     // 病历表单字段
     mrName: document.getElementById('mrName'),
     mrGender: document.getElementById('mrGender'),
@@ -215,9 +348,9 @@ const elements = {
     mrDoctorSignature: document.getElementById('mrDoctorSignature'),
     mrSignatureDate: document.getElementById('mrSignatureDate'),
     
-    // 疾病搜索
-    diseaseSearchInput: document.getElementById('diseaseSearchInput'),
-    diseaseSearchDropdown: document.getElementById('diseaseSearchDropdown'),
+    // 统一搜索
+    unifiedSearchInput: document.getElementById('unifiedSearchInput'),
+    unifiedSearchDropdown: document.getElementById('unifiedSearchDropdown'),
     
     // 弹窗
     examResultModal: document.getElementById('examResultModal'),
@@ -259,36 +392,19 @@ function setupEventListeners() {
     elements.addExamBtn.addEventListener('click', addExamination);
     elements.examTypeSelect.addEventListener('change', handleExamTypeChange);
     
-    // 检查项目搜索
-    const examSearchInput = document.getElementById('examSearchInput');
-    const examSearchDropdown = document.getElementById('examSearchDropdown');
-    if (examSearchInput) {
-        examSearchInput.addEventListener('input', debounce(function() {
-            searchExaminations(this.value);
+    // 统一搜索（疾病/症状/检查项目）
+    const unifiedSearchInput = document.getElementById('unifiedSearchInput');
+    const unifiedSearchDropdown = document.getElementById('unifiedSearchDropdown');
+    if (unifiedSearchInput) {
+        unifiedSearchInput.addEventListener('input', debounce(function() {
+            unifiedSearch(this.value);
         }, 300));
-        examSearchInput.addEventListener('focus', function() {
-            if (this.value.length > 0) searchExaminations(this.value);
+        unifiedSearchInput.addEventListener('focus', function() {
+            if (this.value.length > 0) unifiedSearch(this.value);
         });
         document.addEventListener('click', function(e) {
-            if (!examSearchInput.contains(e.target) && !examSearchDropdown.contains(e.target)) {
-                examSearchDropdown.classList.add('hidden');
-            }
-        });
-    }
-    
-    // 疾病/症状搜索
-    const diseaseSearchInput = document.getElementById('diseaseSearchInput');
-    const diseaseSearchDropdown = document.getElementById('diseaseSearchDropdown');
-    if (diseaseSearchInput) {
-        diseaseSearchInput.addEventListener('input', debounce(function() {
-            searchDiseases(this.value);
-        }, 300));
-        diseaseSearchInput.addEventListener('focus', function() {
-            if (this.value.length > 0) searchDiseases(this.value);
-        });
-        document.addEventListener('click', function(e) {
-            if (!diseaseSearchInput.contains(e.target) && !diseaseSearchDropdown.contains(e.target)) {
-                diseaseSearchDropdown.classList.add('hidden');
+            if (!unifiedSearchInput.contains(e.target) && !unifiedSearchDropdown.contains(e.target)) {
+                unifiedSearchDropdown.classList.add('hidden');
             }
         });
     }
@@ -313,6 +429,27 @@ function setupEventListeners() {
     elements.exportRecordsBtn.addEventListener('click', exportRecords);
     elements.clearAllBtn.addEventListener('click', clearAllRecords);
     
+    // 手术
+    if (elements.submitSurgeryBtn) elements.submitSurgeryBtn.addEventListener('click', submitSurgery);
+    if (elements.aiArrangeSurgeryBtn) elements.aiArrangeSurgeryBtn.addEventListener('click', aiArrangeSurgery);
+    if (elements.surgeryStatusFilter) elements.surgeryStatusFilter.addEventListener('change', renderSurgeryList);
+    if (elements.surgerySearchInput) {
+        elements.surgerySearchInput.addEventListener('input', debounce(searchSurgeryDatabase, 300));
+        elements.surgerySearchInput.addEventListener('focus', function() { if (this.value) searchSurgeryDatabase(); });
+    }
+    if (elements.surgeryTypeSelect) {
+        loadSurgeryDatabase();
+    }
+    
+    // 住院
+    if (elements.submitAdmissionBtn) elements.submitAdmissionBtn.addEventListener('click', submitAdmission);
+    if (elements.aiAdmitBtn) elements.aiAdmitBtn.addEventListener('click', aiAdmit);
+    loadDepartmentConfig();
+    
+    // 会诊
+    if (elements.submitConsultationBtn) elements.submitConsultationBtn.addEventListener('click', submitConsultation);
+    if (elements.aiFillConsultationBtn) elements.aiFillConsultationBtn.addEventListener('click', aiFillConsultation);
+    
     // 弹窗关闭
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -329,7 +466,10 @@ function switchTab(tabName) {
         'consultation': 'consultationTab',
         'examination': 'examinationTab',
         'prescription': 'prescriptionTab',
-        'medical-record': 'medicalRecordTab'
+        'medical-record': 'medicalRecordTab',
+        'surgery': 'surgeryTab',
+        'admission': 'admissionTab',
+        'consultation-request': 'consultationRequestTab'
     };
     
     elements.tabContents.forEach(content => {
@@ -377,34 +517,107 @@ async function createNewPatient() {
             if (saved) recentCases = JSON.parse(saved);
         } catch (e) {}
 
-        const response = await fetchWithTimeout(`${API_BASE_URL}/patients/new`, {
+        const department = document.getElementById('departmentSelect')?.value || '';
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/patients/new-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recentCases })
-        }, 180000); // 3分钟超时
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                currentPatient = data.data.patient;
-                renderPatientInfo();
-                speechService.callPatient(currentPatient.name);
-                renderInitialMessage(data.data.initialDescription);
-                enableControls();
-                saveRecentCase(currentPatient.symptoms || currentPatient.name);
-                
-                currentPrescription = [];
-                currentExaminations = []; // 重置检查单
-                renderPrescriptionItems();
-                renderExaminationList();
-                
-                createNewRecordFromPatient();
-                
-                // 恢复按钮
-                elements.newPatientBtn.disabled = false;
-                elements.newPatientBtn.innerHTML = '<span>👤</span> 新患者';
-                return;
+            body: JSON.stringify({ recentCases, department })
+        }), '生成患者(SSE)');
+
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        // SSE 流式读取
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamError = null;
+        let patientReceived = false;
+        let initialDesc = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const evt = JSON.parse(line.slice(6));
+                    if (evt.type === 'status') {
+                        const loadingSpan = elements.chatMessages.querySelector('.ai-generating span');
+                        if (loadingSpan) loadingSpan.textContent = evt.message || evt.status || '处理中...';
+                    } else if (evt.type === 'patient') {
+                        currentPatient = evt.data || evt.patient;
+                        patientReceived = true;
+                        renderPatientInfo();
+                        speechService.callPatient(currentPatient.name);
+                        enableControls();
+                        saveRecentCase(currentPatient.symptoms || currentPatient.name);
+                        currentPrescription = [];
+                        currentExaminations = [];
+                        renderPrescriptionItems();
+                        renderExaminationList();
+                        createNewRecordFromPatient();
+                        // 为流式描述创建占位元素
+                        elements.chatMessages.innerHTML = `
+                            <div class="chat-message patient" id="streaming-desc">
+                                <div class="message-avatar">👤</div>
+                                <div class="message-content"></div>
+                            </div>
+                        `;
+                    } else if (evt.type === 'description-progress') {
+                        initialDesc += (evt.text || evt.content || '');
+                        const descEl = elements.chatMessages.querySelector('#streaming-desc .message-content');
+                        if (descEl) descEl.innerHTML = initialDesc.replace(/\n/g, '<br>');
+                        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+                    } else if (evt.type === 'description') {
+                        initialDesc = evt.text || evt.content || evt.description || initialDesc;
+                        const descEl2 = elements.chatMessages.querySelector('#streaming-desc .message-content');
+                        if (descEl2) descEl2.innerHTML = initialDesc.replace(/\n/g, '<br>');
+                    } else if (evt.type === 'error') {
+                        streamError = new Error(evt.message || '生成失败');
+                    } else if (evt.type === 'done') {
+                        // 流完成
+                    }
+                } catch (e) { /* ignore parse errors */ }
             }
+        }
+
+        if (streamError) throw streamError;
+
+        // 恢复按钮
+        elements.newPatientBtn.disabled = false;
+        elements.newPatientBtn.innerHTML = '<span>👤</span> 新患者';
+
+        if (patientReceived) {
+            // 移除流式占位 id
+            const streamingEl = document.getElementById('streaming-desc');
+            if (streamingEl) streamingEl.removeAttribute('id');
+            return;
+        }
+
+        // fallback: 如果流式没有收到patient事件，尝试解析buffer为JSON
+        if (buffer.trim()) {
+            try {
+                const data = JSON.parse(buffer);
+                if (data.success) {
+                    currentPatient = data.data.patient;
+                    renderPatientInfo();
+                    speechService.callPatient(currentPatient.name);
+                    renderInitialMessage(data.data.initialDescription);
+                    enableControls();
+                    saveRecentCase(currentPatient.symptoms || currentPatient.name);
+                    currentPrescription = [];
+                    currentExaminations = [];
+                    renderPrescriptionItems();
+                    renderExaminationList();
+                    createNewRecordFromPatient();
+                    elements.newPatientBtn.disabled = false;
+                    elements.newPatientBtn.innerHTML = '<span>👤</span> 新患者';
+                    return;
+                }
+            } catch (e) {}
         }
     } catch (error) {
         console.log('后端不可用，使用本地模式', error);
@@ -982,43 +1195,78 @@ async function sendMessage() {
     elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/patients/${currentPatient.id}/chat`, {
+        // 先插入AI回复占位元素
+        const replyDiv = document.createElement('div');
+        replyDiv.className = 'chat-message patient';
+        replyDiv.innerHTML = `
+            <div class="message-avatar">👤</div>
+            <div class="message-content" style="min-height: 20px;"></div>
+        `;
+        elements.chatMessages.appendChild(replyDiv);
+        const replyContentEl = replyDiv.querySelector('.message-content');
+        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/patients/${currentPatient.id}/chat-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ question: message })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            // 支持多种返回格式
-            let reply = null;
-            
-            // 最新格式：{ success: true, data: { answer: "...", history: [...] } }
-            if (data.success && data.data && data.data.answer) {
-                reply = data.data.answer;
-            } 
-            // 其他可能的格式
-            else if (data.answer) {
-                reply = data.answer;
-            } 
-            else if (data.data) {
-                if (typeof data.data === 'object') {
-                    reply = data.data.answer || data.data;
-                } else {
-                    reply = data.data;
-                }
-            }
-            
-            if (reply) {
-                if (typeof reply === 'object') {
-                    reply = JSON.stringify(reply);
-                }
-                renderPatientReply(String(reply));
-                return;
+        }), '问诊对话(SSE)');
+
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        // SSE 流式读取
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamReply = '';
+        let streamError = null;
+        let finalAnswer = null;
+        let finalHistory = null;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const evt = JSON.parse(line.slice(6));
+                    if (evt.type === 'token') {
+                        streamReply += (evt.text || evt.content || evt.token || '');
+                        replyContentEl.innerHTML = streamReply.replace(/\n/g, '<br>');
+                        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+                    } else if (evt.type === 'done') {
+                        finalAnswer = evt.answer || evt.data?.answer || null;
+                        finalHistory = evt.history || evt.data?.history || null;
+                    } else if (evt.type === 'error') {
+                        streamError = new Error(evt.message || '对话失败');
+                    }
+                } catch (e) { /* ignore parse errors */ }
             }
         }
+
+        if (streamError) throw streamError;
+
+        // 使用流式累积的回复，或用 done 事件中的最终 answer
+        const reply = finalAnswer || streamReply;
+        if (reply) {
+            let safeReply = String(reply);
+            safeReply = safeReply.trim().replace(/\n\s*\n/g, '\n').replace(/\n/g, '<br>');
+            replyContentEl.innerHTML = safeReply;
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        } else {
+            replyContentEl.innerHTML = '好的，我明白了';
+        }
+        return;
     } catch (e) {
-        console.log('使用本地回复');
+        console.log('使用本地回复', e);
+        // 移除可能残留的空占位元素
+        const emptyReply = elements.chatMessages.querySelector('.chat-message.patient:last-child .message-content');
+        if (emptyReply && !emptyReply.textContent.trim()) {
+            emptyReply.parentElement.remove();
+        }
     }
     
     renderPatientReply('好的医生，我明白了。还有其他问题吗？');
@@ -1108,9 +1356,9 @@ function renderExamTypes() {
     elements.examTypeSelect.innerHTML = optionsHtml;
 }
 
-// 检查项目搜索功能
-async function searchExaminations(query) {
-    const dropdown = document.getElementById('examSearchDropdown');
+// 统一搜索（疾病/症状 + 检查项目）
+async function unifiedSearch(query) {
+    const dropdown = document.getElementById('unifiedSearchDropdown');
     if (!dropdown) return;
     
     if (!query || query.trim().length === 0) {
@@ -1119,133 +1367,95 @@ async function searchExaminations(query) {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/examinations/search?q=${encodeURIComponent(query)}`);
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.data && data.data.length > 0) {
-                renderExamSearchResults(data.data);
-                return;
-            }
+        const [diseaseRes, examRes] = await Promise.allSettled([
+            fetch(`${API_BASE_URL}/examinations/disease-search?q=${encodeURIComponent(query)}`),
+            fetch(`${API_BASE_URL}/examinations/search?q=${encodeURIComponent(query)}`)
+        ]);
+        
+        let diseaseResults = [];
+        let examResults = [];
+        
+        // 处理疾病搜索结果
+        if (diseaseRes.status === 'fulfilled' && diseaseRes.value.ok) {
+            const data = await diseaseRes.value.json();
+            if (data.success && data.data) diseaseResults = data.data;
         }
+        
+        // 处理检查项目结果
+        if (examRes.status === 'fulfilled' && examRes.value.ok) {
+            const data = await examRes.value.json();
+            if (data.success && data.data) examResults = data.data;
+        }
+        
+        // 本地补充检查项目
+        if (examResults.length === 0) {
+            const q = query.toLowerCase();
+            examResults = Object.values(examinationTypes).filter(type => {
+                const name = (type.name || '').toLowerCase();
+                const desc = (type.description || '').toLowerCase();
+                const category = (type.category || '').toLowerCase();
+                return name.includes(q) || desc.includes(q) || category.includes(q);
+            });
+        }
+        
+        renderUnifiedSearchResults(diseaseResults, examResults);
     } catch (e) {
-        console.log('搜索检查项目失败，使用本地过滤');
+        console.error('统一搜索失败:', e);
+        dropdown.innerHTML = '<div class="exam-search-item no-result">搜索失败，请重试</div>';
+        dropdown.classList.remove('hidden');
     }
-    
-    // 本地过滤
-    const localResults = Object.values(examinationTypes).filter(type => {
-        const name = (type.name || '').toLowerCase();
-        const desc = (type.description || '').toLowerCase();
-        const category = (type.category || '').toLowerCase();
-        const q = query.toLowerCase();
-        return name.includes(q) || desc.includes(q) || category.includes(q);
-    });
-    
-    renderExamSearchResults(localResults);
 }
 
-function renderExamSearchResults(results) {
-    const dropdown = document.getElementById('examSearchDropdown');
+function renderUnifiedSearchResults(diseaseResults, examResults) {
+    const dropdown = document.getElementById('unifiedSearchDropdown');
     if (!dropdown) return;
     
-    if (results.length === 0) {
-        dropdown.innerHTML = '<div class="exam-search-item no-result">未找到匹配的检查项目</div>';
+    if (diseaseResults.length === 0 && examResults.length === 0) {
+        dropdown.innerHTML = '<div class="exam-search-item no-result">未找到匹配结果</div>';
         dropdown.classList.remove('hidden');
         return;
     }
     
-    dropdown.innerHTML = results.slice(0, 10).map(type => `
-        <div class="exam-search-item" data-id="${type.id}" data-name="${type.name}">
-            <div class="exam-search-name">${type.name}</div>
-            <div class="exam-search-info">${type.category || ''} ${type.price ? '¥' + type.price : ''}</div>
-            ${type.description ? `<div class="exam-search-desc">${type.description}</div>` : ''}
-        </div>
-    `).join('');
+    let html = '';
     
-    dropdown.querySelectorAll('.exam-search-item:not(.no-result)').forEach(item => {
-        item.addEventListener('click', function() {
-            const typeId = this.dataset.id;
-            const typeName = this.dataset.name;
-            
-            // 选中检查项目
-            const select = document.getElementById('examTypeSelect');
-            if (select) {
-                // 查找并选中对应的option
-                for (let option of select.options) {
-                    if (option.value === typeId || option.textContent === typeName) {
-                        select.value = option.value;
-                        break;
-                    }
-                }
-                handleExamTypeChange();
-            }
-            
-            // 清空搜索框并隐藏下拉
-            const input = document.getElementById('examSearchInput');
-            if (input) input.value = '';
-            dropdown.classList.add('hidden');
-        });
-    });
-    
-    dropdown.classList.remove('hidden');
-}
-
-// 疾病/症状模糊搜索
-async function searchDiseases(query) {
-    const dropdown = document.getElementById('diseaseSearchDropdown');
-    if (!dropdown) return;
-    
-    if (!query || query.trim().length === 0) {
-        dropdown.classList.add('hidden');
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/examinations/disease-search?q=${encodeURIComponent(query)}`);
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.data && data.data.length > 0) {
-                renderDiseaseSearchResults(data.data);
-                return;
-            }
-        }
-    } catch (e) {
-        console.log('疾病搜索失败:', e);
-    }
-    
-    dropdown.innerHTML = '<div class="exam-search-item no-result">未找到匹配的疾病</div>';
-    dropdown.classList.remove('hidden');
-}
-
-function renderDiseaseSearchResults(results) {
-    const dropdown = document.getElementById('diseaseSearchDropdown');
-    if (!dropdown) return;
-    
-    if (results.length === 0) {
-        dropdown.innerHTML = '<div class="exam-search-item no-result">未找到匹配的疾病</div>';
-        dropdown.classList.remove('hidden');
-        return;
-    }
-    
-    dropdown.innerHTML = results.slice(0, 8).map(disease => {
-        const matchBadges = disease.matchedFields.map(f => {
-            const labels = { name: '疾病名', alias: '别名', symptom: '症状', exam: '检查' };
-            return `<span class="tag tag-blue" style="font-size:10px;padding:1px 4px;margin-left:4px;">${labels[f] || f}</span>`;
+    // 疾病/症状区块
+    if (diseaseResults.length > 0) {
+        html += '<div class="exam-search-section-title" style="padding:4px 10px;font-size:12px;color:#666;background:#f8f8f8;font-weight:bold;">🏥 疾病/症状</div>';
+        html += diseaseResults.slice(0, 6).map(disease => {
+            const matchBadges = disease.matchedFields.map(f => {
+                const labels = { name: '疾病名', alias: '别名', symptom: '症状', exam: '检查' };
+                return `<span class="tag tag-blue" style="font-size:10px;padding:1px 4px;margin-left:4px;">${labels[f] || f}</span>`;
+            }).join('');
+            const symptomTags = disease.symptoms.slice(0, 5).map(s => `<span class="tag" style="font-size:10px;padding:1px 4px;margin:1px;background:#f0f0f0;">${s}</span>`).join('');
+            const examNames = disease.exams.slice(0, 4).map(eid => {
+                const found = Object.values(examinationTypes || {}).find(t => t.id === eid);
+                return found ? found.name : eid;
+            }).join('、');
+            return `
+                <div class="exam-search-item disease-item" data-disease="${disease.name}" data-exams='${JSON.stringify(disease.exams)}' data-symptoms='${JSON.stringify(disease.symptoms)}'>
+                    <div class="exam-search-name">${disease.name}${matchBadges}</div>
+                    <div style="margin:4px 0;">${symptomTags}</div>
+                    <div class="exam-search-info">推荐检查：${examNames}</div>
+                </div>
+            `;
         }).join('');
-        const symptomTags = disease.symptoms.slice(0, 5).map(s => `<span class="tag" style="font-size:10px;padding:1px 4px;margin:1px;background:#f0f0f0;">${s}</span>`).join('');
-        const examNames = disease.exams.slice(0, 4).map(eid => {
-            // 查找检查名称
-            const found = Object.values(examinationTypes || {}).find(t => t.id === eid);
-            return found ? found.name : eid;
-        }).join('、');
-        return `
-            <div class="exam-search-item disease-item" data-disease="${disease.name}" data-exams='${JSON.stringify(disease.exams)}' data-symptoms='${JSON.stringify(disease.symptoms)}'>
-                <div class="exam-search-name">${disease.name}${matchBadges}</div>
-                <div style="margin:4px 0;">${symptomTags}</div>
-                <div class="exam-search-info">推荐检查：${examNames}</div>
-            </div>
-        `;
-    }).join('');
+    }
     
+    // 检查项目区块
+    if (examResults.length > 0) {
+        html += '<div class="exam-search-section-title" style="padding:4px 10px;font-size:12px;color:#666;background:#f8f8f8;font-weight:bold;border-top:1px solid #eee;">🔬 检查项目</div>';
+        html += examResults.slice(0, 8).map(type => `
+            <div class="exam-search-item exam-item" data-id="${type.id}" data-name="${type.name}">
+                <div class="exam-search-name">${type.name}</div>
+                <div class="exam-search-info">${type.category || ''} ${type.price ? '¥' + type.price : ''}</div>
+                ${type.description ? `<div class="exam-search-desc">${type.description}</div>` : ''}
+            </div>
+        `).join('');
+    }
+    
+    dropdown.innerHTML = html;
+    
+    // 绑定疾病项点击事件
     dropdown.querySelectorAll('.disease-item').forEach(item => {
         item.addEventListener('click', function() {
             const diseaseName = this.dataset.disease;
@@ -1260,7 +1470,6 @@ function renderDiseaseSearchResults(results) {
             // 批量添加推荐检查
             let addedCount = 0;
             for (const examId of examIds) {
-                // 查找检查类型
                 let examType = null;
                 if (Array.isArray(examinationTypes)) {
                     examType = examinationTypes.find(t => t.id === examId);
@@ -1282,12 +1491,10 @@ function renderDiseaseSearchResults(results) {
             
             if (addedCount > 0) renderExaminationList();
             
-            // 提示
-            const input = document.getElementById('diseaseSearchInput');
+            const input = document.getElementById('unifiedSearchInput');
             if (input) input.value = '';
             dropdown.classList.add('hidden');
             
-            // 显示提示
             if (addedCount > 0) {
                 const toast = document.createElement('div');
                 toast.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#4CAF50;color:white;padding:10px 20px;border-radius:8px;z-index:10000;font-size:14px;';
@@ -1295,6 +1502,29 @@ function renderDiseaseSearchResults(results) {
                 document.body.appendChild(toast);
                 setTimeout(() => toast.remove(), 3000);
             }
+        });
+    });
+    
+    // 绑定检查项点击事件
+    dropdown.querySelectorAll('.exam-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const typeId = this.dataset.id;
+            const typeName = this.dataset.name;
+            
+            const select = document.getElementById('examTypeSelect');
+            if (select) {
+                for (let option of select.options) {
+                    if (option.value === typeId || option.textContent === typeName) {
+                        select.value = option.value;
+                        break;
+                    }
+                }
+                handleExamTypeChange();
+            }
+            
+            const input = document.getElementById('unifiedSearchInput');
+            if (input) input.value = '';
+            dropdown.classList.add('hidden');
         });
     });
     
@@ -1370,6 +1600,7 @@ async function showExamResult(id) {
     
     if (examItem.result) {
         renderExamResult(examItem);
+        appendRegenerateButton(id);
         return;
     }
     
@@ -1411,10 +1642,10 @@ async function showExamResult(id) {
         const examOrderId = createData.data.id;
         
         // 使用流式API获取检查结果
-        const streamResponse = await fetchWithTimeout(`${API_BASE_URL}/examinations/${examOrderId}/execute-stream`, {
+        const streamResponse = await apiRateLimiter.execute(() => fetchWithTimeout(`${API_BASE_URL}/examinations/${examOrderId}/execute-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
-        }, 180000);
+        }, 180000), '检查执行');
         
         if (!streamResponse.ok) {
             throw new Error('执行检查失败');
@@ -1425,6 +1656,7 @@ async function showExamResult(id) {
         let buffer = '';
         let aiDescription = '';
         let resultData = null;
+        let examUsage = null;
         
         const streamContentEl = document.getElementById('examStreamContent');
         const generatingEl = elements.examResultContent.querySelector('.ai-generating');
@@ -1489,6 +1721,7 @@ async function showExamResult(id) {
         if (!aiDescription && resultData) {
             renderExamResult(examItem);
         }
+        appendRegenerateButton(id);
         
     } catch (e) {
         console.log('获取检查结果失败:', e);
@@ -1517,6 +1750,7 @@ async function showExamResult(id) {
                         if (executeData.success && executeData.data) {
                             examItem.result = executeData.data.result;
                             renderExamResult(examItem);
+                            appendRegenerateButton(id);
                             return;
                         }
                     }
@@ -1527,6 +1761,7 @@ async function showExamResult(id) {
         }
         
         renderExamResultPlaceholder(examItem);
+        appendRegenerateButton(id);
     }
 }
 
@@ -2023,6 +2258,20 @@ const MEDICAL_SYNONYMS = {
     '焦虑': ['焦虑症', '广泛性焦虑障碍', '社交焦虑障碍'],
     '癫痫': ['癫痫', '癫痫辅助治疗'],
     '骨折': ['骨折', '骨质疏松'],
+    // 品牌名映射
+    '贝雪': ['枸地氯雷他定', '氯雷他定'],
+    '感康': ['复方氨酚烷胺片', '氨酚烷胺'],
+    '快克': ['复方氨酚烷胺胶囊', '氨酚烷胺'],
+    '泰诺': ['对乙酰氨基酚', '酚麻美敏'],
+    '白加黑': ['氨酚伪麻美芬片', '氨麻苯美片'],
+    '芬必得': ['布洛芬缓释胶囊', '布洛芬'],
+    '阿莫西林': ['阿莫西林胶囊', '羟氨苄青霉素'],
+    '头孢': ['头孢克肟', '头孢呋辛', '头孢地尼', '头孢克洛'],
+    '思密达': ['蒙脱石散'],
+    '思连康': ['双歧杆菌四联活菌片'],
+    '美林': ['布洛芬混悬液'],
+    '泰诺林': ['对乙酰氨基酚混悬滴剂'],
+    '希舒美': ['阿奇霉素干混悬剂'],
 };
 
 function searchMedicine() {
@@ -2137,7 +2386,7 @@ async function endConsultation() {
         `;
         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
         
-        // 调用评分API - 发送完整检查数据（含结果描述）
+        // 调用评分API(SSE流式) - 发送完整检查数据（含结果描述）
         const examDetails = currentExaminations.map(e => ({
             type: e.type,
             typeName: e.typeName,
@@ -2145,7 +2394,7 @@ async function endConsultation() {
             price: e.price || 50,
             resultDescription: (e.result && e.result.aiDescription) || (e.result && e.result.description) || ''
         }));
-        const response = await fetch(`${API_BASE_URL}/patients/${currentPatient.id}/evaluate`, {
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/patients/${currentPatient.id}/evaluate-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2157,16 +2406,69 @@ async function endConsultation() {
                 userExaminations: currentExaminations.map(e => e.typeName || e.type),
                 examinationDetails: examDetails
             })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                showDiagnosisResult(data.data);
-                return;
+        }), 'AI评分(SSE)');
+
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        // SSE 流式读取
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let resultData = null;
+        let streamError = null;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const evt = JSON.parse(line.slice(6));
+                    if (evt.type === 'status') {
+                        const loadingSpan = elements.chatMessages.querySelector('.chat-message.system:last-child .ai-generating span');
+                        if (loadingSpan) loadingSpan.textContent = evt.message || evt.status || '评分中...';
+                    } else if (evt.type === 'token') {
+                        // 可选：显示评分进度文本
+                    } else if (evt.type === 'result') {
+                        if (evt.data) {
+                            resultData = evt.data;
+                        } else if (evt.result) {
+                            resultData = evt.result;
+                        } else {
+                            // evt itself is the result; strip the SSE type field
+                            const { type, ...rest } = evt;
+                            resultData = rest;
+                        }
+                    } else if (evt.type === 'error') {
+                        streamError = new Error(evt.message || '评分失败');
+                    } else if (evt.type === 'done') {
+                        // 流完成
+                    }
+                } catch (e) { /* ignore parse errors */ }
             }
         }
-        
+
+        if (streamError) throw streamError;
+
+        if (resultData) {
+            showDiagnosisResult(resultData);
+            return;
+        }
+
+        // fallback: 尝试从buffer解析
+        if (buffer.trim()) {
+            try {
+                const data = JSON.parse(buffer);
+                if (data.success && data.data) {
+                    showDiagnosisResult(data.data);
+                    return;
+                }
+            } catch (e) {}
+        }
+
         alert('评分失败，请稍后重试。');
         
     } catch (error) {
@@ -2189,7 +2491,6 @@ function showDiagnosisResult(result) {
     
     const emoji = gradeEmoji[result.grade] || '📋';
     const aiTag = result.aiScored ? '<span class="ai-status" style="margin-left: 8px;"><span class="ai-status-dot"></span>AI评分</span>' : '';
-    
     let breakdownHtml = '';
     if (result.scoreBreakdown) {
         breakdownHtml = `
@@ -2388,5 +2689,1313 @@ async function fetchWithTimeout(url, options = {}, timeout = 180000) {
             throw new Error('请求超时');
         }
         throw error;
+    }
+}
+
+// ============================================================
+// 手术模块
+// ============================================================
+let surgeryDatabase = [];
+
+// 加载手术数据库并填充下拉
+async function loadSurgeryDatabase() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/surgeries/database`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                surgeryDatabase = data.data || [];
+                populateSurgeryTypeSelect();
+            }
+        }
+    } catch (err) {
+        console.error('加载手术数据库失败:', err);
+    }
+    // 同时渲染手术列表
+    renderSurgeryList();
+}
+
+function populateSurgeryTypeSelect() {
+    if (!elements.surgeryTypeSelect) return;
+    // 按科室分组
+    const groups = {};
+    surgeryDatabase.forEach(s => {
+        if (!groups[s.department]) groups[s.department] = [];
+        groups[s.department].push(s);
+    });
+    elements.surgeryTypeSelect.innerHTML = '<option value="">-- 请选择手术 --</option>';
+    Object.keys(groups).forEach(dept => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = dept;
+        groups[dept].forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = `${s.name} (${s.duration}分钟, ${getRiskLevelLabel(s.riskLevel)})`;
+            optgroup.appendChild(opt);
+        });
+        elements.surgeryTypeSelect.appendChild(optgroup);
+    });
+}
+
+function searchSurgeryDatabase() {
+    if (!elements.surgerySearchInput || !elements.surgerySearchDropdown) return;
+    const query = elements.surgerySearchInput.value.trim().toLowerCase();
+    if (!query) {
+        elements.surgerySearchDropdown.classList.add('hidden');
+        return;
+    }
+    const results = surgeryDatabase.filter(s =>
+        (s.name && s.name.toLowerCase().includes(query)) ||
+        (s.department && s.department.toLowerCase().includes(query))
+    ).slice(0, 10);
+
+    if (results.length === 0) {
+        elements.surgerySearchDropdown.innerHTML = '<div class="dropdown-item" style="color:#999;">未找到匹配手术</div>';
+    } else {
+        elements.surgerySearchDropdown.innerHTML = results.map(s => `
+            <div class="dropdown-item" data-id="${s.id}" onclick="selectSurgeryFromSearch('${s.id}')">
+                <strong>${s.name}</strong>
+                <span style="color:#999; margin-left:8px;">${s.department} | ${s.duration}分钟 | ${getRiskLevelLabel(s.riskLevel)}</span>
+            </div>
+        `).join('');
+    }
+    elements.surgerySearchDropdown.classList.remove('hidden');
+}
+
+function selectSurgeryFromSearch(surgeryId) {
+    if (elements.surgeryTypeSelect) {
+        elements.surgeryTypeSelect.value = surgeryId;
+    }
+    if (elements.surgerySearchDropdown) {
+        elements.surgerySearchDropdown.classList.add('hidden');
+    }
+    if (elements.surgerySearchInput) {
+        const found = surgeryDatabase.find(s => s.id === surgeryId);
+        if (found) elements.surgerySearchInput.value = found.name;
+    }
+}
+// 使函数全局可访问（用于onclick）
+window.selectSurgeryFromSearch = selectSurgeryFromSearch;
+
+async function submitSurgery() {
+    if (!currentPatient) {
+        alert('请先创建患者');
+        return;
+    }
+    const surgeryId = elements.surgeryTypeSelect ? elements.surgeryTypeSelect.value : '';
+    if (!surgeryId) {
+        alert('请选择手术类型');
+        return;
+    }
+    const surgeryInfo = surgeryDatabase.find(s => s.id === surgeryId);
+    const surgeryType = elements.surgeryCategorySelect ? elements.surgeryCategorySelect.value : 'elective';
+    const anesthesiaType = elements.anesthesiaSelect ? elements.anesthesiaSelect.value : 'general';
+    const diagnosis = elements.surgeryDiagnosis ? elements.surgeryDiagnosis.value : '';
+    const indication = elements.surgeryIndication ? elements.surgeryIndication.value : '';
+
+    const body = {
+        patientId: currentPatient.id,
+        surgeryType: surgeryInfo || { id: surgeryId, name: surgeryId },
+        type: surgeryType,
+        anesthesiaType: anesthesiaType,
+        diagnosis: diagnosis,
+        indication: indication,
+        status: 'pending'
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/surgeries`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                alert('手术申请创建成功！');
+                renderSurgeryList();
+                // 清空表单
+                if (elements.surgerySearchInput) elements.surgerySearchInput.value = '';
+                if (elements.surgeryDiagnosis) elements.surgeryDiagnosis.value = '';
+                if (elements.surgeryIndication) elements.surgeryIndication.value = '';
+            } else {
+                alert('创建失败: ' + (data.message || '未知错误'));
+            }
+        } else {
+            alert('创建手术申请失败');
+        }
+    } catch (err) {
+        console.error('创建手术失败:', err);
+        alert('创建手术申请失败: ' + err.message);
+    }
+}
+
+async function aiArrangeSurgery() {
+    // 获取最新创建的手术或列表中第一个pending的手术
+    let surgeries = [];
+    try {
+        const resp = await fetch(`${API_BASE_URL}/surgeries`);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.success) surgeries = data.data || [];
+        }
+    } catch (e) {}
+
+    const target = surgeries.find(s => s.status === 'pending') || surgeries[0];
+    if (!target) {
+        alert('没有可安排的手术，请先创建手术申请');
+        return;
+    }
+
+    const btn = elements.aiArrangeSurgeryBtn;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'AI安排中...';
+    }
+
+    try {
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/surgeries/${target.id}/ai-arrange`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }), '手术安排');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6).trim();
+                if (!jsonStr) continue;
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (evt.type === 'progress') {
+                        console.log('[手术AI]', evt.data ? evt.data.message : '');
+                    } else if (evt.type === 'arrangement') {
+                        // 保存手术安排数据
+                        window._lastSurgeryArrangement = evt.data || evt;
+                    } else if (evt.type === 'complete') {
+                        // 显示手术安排详情
+                        const arr = window._lastSurgeryArrangement || {};
+                        const details = [];
+                        if (arr.recommendedSurgeryType) details.push(`手术类型: ${arr.recommendedSurgeryType}`);
+                        if (arr.anesthesiaType) details.push(`麻醉方式: ${arr.anesthesiaType}`);
+                        if (arr.surgicalApproach) details.push(`手术入路: ${arr.surgicalApproach}`);
+                        if (arr.estimatedDuration) details.push(`预计时长: ${arr.estimatedDuration}`);
+                        if (arr.riskAssessment) details.push(`风险评估: ${arr.riskAssessment}`);
+                        if (arr.surgicalTeam) {
+                            const team = arr.surgicalTeam;
+                            if (team['主刀医生']) details.push(`主刀: ${team['主刀医生']}`);
+                            if (team['麻醉医生']) details.push(`麻醉: ${team['麻醉医生']}`);
+                        }
+                        if (arr.preoperativeDiagnosis) details.push(`术前诊断: ${arr.preoperativeDiagnosis}`);
+                        if (arr.preoperativeNotes) details.push(`术前准备: ${arr.preoperativeNotes}`);
+                        alert('AI手术安排完成！\n\n' + (details.length > 0 ? details.join('\n') : '已自动安排'));
+                        renderSurgeryList();
+                    } else if (evt.type === 'error') {
+                        alert('AI安排失败: ' + ((evt.data && evt.data.message) || '未知错误'));
+                    }
+                } catch (parseErr) {
+                    // 忽略解析错误
+                }
+            }
+        }
+    } catch (err) {
+        console.error('AI安排手术失败:', err);
+        alert('AI安排手术失败: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🤖 AI一键安排';
+        }
+    }
+}
+
+async function renderSurgeryList() {
+    if (!elements.surgeryListContent) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/surgeries`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.success) return;
+
+        let surgeries = data.data || [];
+        const filter = elements.surgeryStatusFilter ? elements.surgeryStatusFilter.value : '';
+        if (filter) {
+            surgeries = surgeries.filter(s => s.status === filter);
+        }
+
+        if (surgeries.length === 0) {
+            elements.surgeryListContent.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">暂无手术记录</div>';
+            return;
+        }
+
+        elements.surgeryListContent.innerHTML = surgeries.map(s => {
+            const surgeryName = (s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知');
+            return `
+                <div class="surgery-item" style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; margin-bottom:8px; background:#fff;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong>${surgeryName}</strong>
+                        <span class="status-badge" style="background:${getStatusColor(s.status)}; color:#fff; padding:2px 8px; border-radius:4px; font-size:12px;">
+                            ${getStatusLabel(s.status)}
+                        </span>
+                    </div>
+                    <div style="color:#666; font-size:13px; margin-top:4px;">
+                        类型: ${s.typeLabel || s.type} | 麻醉: ${s.anesthesiaLabel || s.anesthesiaType}
+                    </div>
+                    ${s.diagnosis ? `<div style="color:#666; font-size:13px;">诊断: ${s.diagnosis}</div>` : ''}
+                    <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-outline" onclick="showSurgeryDetail('${s.id}')">详情</button>
+                        ${s.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="updateSurgeryStatus('${s.id}','approved')">审批</button>` : ''}
+                        ${s.status === 'approved' ? `<button class="btn btn-sm btn-primary" onclick="updateSurgeryStatus('${s.id}','preparing')">术前准备</button>` : ''}
+                        ${s.status === 'preparing' ? `<button class="btn btn-sm btn-primary" onclick="updateSurgeryStatus('${s.id}','in_progress')">开始手术</button>` : ''}
+                        ${s.status === 'in_progress' ? `<button class="btn btn-sm btn-success" onclick="updateSurgeryStatus('${s.id}','completed')">完成</button>` : ''}
+                        ${s.status !== 'completed' && s.status !== 'cancelled' ? `<button class="btn btn-sm btn-danger" onclick="updateSurgeryStatus('${s.id}','cancelled')">取消</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('渲染手术列表失败:', err);
+    }
+}
+
+function showSurgeryDetail(id) {
+    fetch(`${API_BASE_URL}/surgeries/${id}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            const s = data.data;
+            const surgeryName = (s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知');
+            let html = `
+                <h3>${surgeryName}</h3>
+                <p><strong>状态：</strong>${getStatusLabel(s.status)}</p>
+                <p><strong>手术类型：</strong>${s.typeLabel || s.type}</p>
+                <p><strong>麻醉方式：</strong>${s.anesthesiaLabel || s.anesthesiaType}</p>
+                <p><strong>诊断：</strong>${s.diagnosis || '-'}</p>
+                <p><strong>手术指征：</strong>${s.indication || '-'}</p>
+                <p><strong>主刀医生：</strong>${s.surgeon || '-'}</p>
+                <p><strong>助手：</strong>${s.assistant || '-'}</p>
+                <p><strong>麻醉医生：</strong>${s.anesthesiologist || '-'}</p>
+                <p><strong>器械护士：</strong>${s.nurse || '-'}</p>
+                <p><strong>手术计划：</strong>${s.plan || '-'}</p>
+                <p><strong>风险：</strong>${s.risks || '-'}</p>
+                <p><strong>备注：</strong>${s.notes || '-'}</p>
+                <p><strong>创建时间：</strong>${s.createdAt || '-'}</p>
+            `;
+            if (s.aiArrangement) {
+                const a = s.aiArrangement;
+                html += `<hr><h4>🤖 AI手术安排</h4>`;
+                if (a.recommendedSurgeryType) html += `<p><strong>推荐类型：</strong>${a.recommendedSurgeryType}</p>`;
+                if (a.surgicalApproach) html += `<p><strong>手术入路：</strong>${a.surgicalApproach}</p>`;
+                if (a.anesthesiaType) html += `<p><strong>麻醉方式：</strong>${a.anesthesiaType}</p>`;
+                if (a.surgicalTeam) {
+                    html += `<p><strong>手术团队：</strong></p><ul>`;
+                    Object.entries(a.surgicalTeam).forEach(([role, name]) => {
+                        html += `<li>${role}: ${name}</li>`;
+                    });
+                    html += `</ul>`;
+                }
+                if (a.preoperativeDiagnosis) html += `<p><strong>术前诊断：</strong>${a.preoperativeDiagnosis}</p>`;
+                if (a.preoperativeNotes) html += `<p><strong>术前准备：</strong>${a.preoperativeNotes}</p>`;
+                if (a.estimatedDuration) html += `<p><strong>预计时长：</strong>${a.estimatedDuration}</p>`;
+                if (a.riskAssessment) html += `<p><strong>风险评估：</strong>${a.riskAssessment}</p>`;
+            }
+            // 使用已有的模态框或创建临时弹窗
+            showModal('手术详情', html);
+        })
+        .catch(err => {
+            console.error('获取手术详情失败:', err);
+            alert('获取手术详情失败');
+        });
+}
+window.showSurgeryDetail = showSurgeryDetail;
+
+async function updateSurgeryStatus(id, status) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/surgeries/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        if (response.ok) {
+            renderSurgeryList();
+        } else {
+            alert('更新状态失败');
+        }
+    } catch (err) {
+        console.error('更新手术状态失败:', err);
+        alert('更新状态失败: ' + err.message);
+    }
+}
+window.updateSurgeryStatus = updateSurgeryStatus;
+
+function getStatusLabel(status) {
+    const map = {
+        'pending': '待审批',
+        'approved': '已审批',
+        'preparing': '术前准备',
+        'in_progress': '手术中',
+        'completed': '已完成',
+        'cancelled': '已取消'
+    };
+    return map[status] || status || '未知';
+}
+
+function getStatusColor(status) {
+    const map = {
+        'pending': '#f0ad4e',
+        'approved': '#5bc0de',
+        'preparing': '#5bc0de',
+        'in_progress': '#0275d8',
+        'completed': '#5cb85c',
+        'cancelled': '#d9534f'
+    };
+    return map[status] || '#999';
+}
+
+function getRiskLevelLabel(level) {
+    const map = { 'low': '低风险', 'medium': '中风险', 'high': '高风险' };
+    return map[level] || level || '未知';
+}
+
+// ============================================================
+// 住院模块
+// ============================================================
+let departmentConfig = {};
+
+async function loadDepartmentConfig() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/admissions/departments`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                departmentConfig = data.data || {};
+                populateAdmissionDeptSelect();
+            }
+        }
+    } catch (err) {
+        console.error('加载科室配置失败:', err);
+    }
+    renderAdmissionList();
+}
+
+function populateAdmissionDeptSelect() {
+    if (!elements.admissionDeptSelect) return;
+    elements.admissionDeptSelect.innerHTML = '<option value="">-- 请选择科室 --</option>';
+    Object.keys(departmentConfig).forEach(dept => {
+        const opt = document.createElement('option');
+        opt.value = dept;
+        const cfg = departmentConfig[dept];
+        opt.textContent = `${dept} (${cfg.floor}楼, ${cfg.beds}床)`;
+        elements.admissionDeptSelect.appendChild(opt);
+    });
+}
+
+async function submitAdmission() {
+    if (!currentPatient) {
+        alert('请先创建患者');
+        return;
+    }
+    const department = elements.admissionDeptSelect ? elements.admissionDeptSelect.value : '';
+    if (!department) {
+        alert('请选择住院科室');
+        return;
+    }
+    const diagnosis = elements.admissionDiagnosis ? elements.admissionDiagnosis.value : '';
+    const treatmentPlan = elements.admissionTreatment ? elements.admissionTreatment.value : '';
+    const attendingDoctor = elements.admissionDoctor ? elements.admissionDoctor.value : '';
+
+    // 分配床位
+    const deptCfg = departmentConfig[department];
+    const totalBeds = deptCfg ? deptCfg.beds : 20;
+    const bedNumber = `${department}-${Math.floor(Math.random() * totalBeds) + 1}`;
+
+    const body = {
+        patientId: currentPatient.id,
+        patientName: currentPatient.name,
+        department: department,
+        bedNumber: bedNumber,
+        diagnosis: diagnosis,
+        treatmentPlan: treatmentPlan,
+        attendingDoctor: attendingDoctor,
+        status: 'admitted'
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/admissions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                alert(`住院办理成功！床号: ${bedNumber}`);
+                renderAdmissionList();
+                if (elements.admissionDiagnosis) elements.admissionDiagnosis.value = '';
+                if (elements.admissionTreatment) elements.admissionTreatment.value = '';
+                if (elements.admissionDoctor) elements.admissionDoctor.value = '';
+            } else {
+                alert('办理失败: ' + (data.message || '未知错误'));
+            }
+        } else {
+            alert('住院办理失败');
+        }
+    } catch (err) {
+        console.error('住院办理失败:', err);
+        alert('住院办理失败: ' + err.message);
+    }
+}
+
+async function aiAdmit() {
+    if (!currentPatient) {
+        alert('请先创建患者');
+        return;
+    }
+
+    const btn = elements.aiAdmitBtn;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'AI收治中...';
+    }
+
+    try {
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/admissions/ai-admit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patientId: currentPatient.id })
+        }), '住院收治');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        let eventType = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const rawLine of lines) {
+                // admissions SSE 格式: event: xxx\ndata: xxx
+                if (rawLine.startsWith('event: ')) {
+                    eventType = rawLine.slice(7).trim();
+                    continue;
+                }
+                if (!rawLine.startsWith('data: ')) continue;
+                const jsonStr = rawLine.slice(6).trim();
+                if (!jsonStr) continue;
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (eventType === 'progress') {
+                        console.log('[住院AI]', evt.message || '');
+                    } else if (eventType === 'result') {
+                        const rec = evt.recommendation || {};
+                        // 填充住院表单
+                        if (elements.admissionDeptSelect) elements.admissionDeptSelect.value = rec.department || '';
+                        if (elements.admissionDiagnosis) elements.admissionDiagnosis.value = rec.admissionDiagnosis || '';
+                        if (elements.admissionTreatment) elements.admissionTreatment.value = rec.treatmentPlan || '';
+                        if (elements.admissionDoctor) elements.admissionDoctor.value = rec.attendingDoctor || '';
+                        renderAdmissionList();
+                    } else if (eventType === 'done') {
+                        console.log('[住院AI] 完成');
+                    } else if (eventType === 'error') {
+                        alert('AI收治失败: ' + (evt.message || '未知错误'));
+                    }
+                } catch (parseErr) {
+                    // 忽略
+                }
+            }
+        }
+    } catch (err) {
+        console.error('AI收治失败:', err);
+        alert('AI收治失败: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🤖 AI一键收治';
+        }
+    }
+}
+
+async function renderAdmissionList() {
+    if (!elements.admissionListContent) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/admissions`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.success) return;
+
+        const admissions = data.data || [];
+
+        if (admissions.length === 0) {
+            elements.admissionListContent.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">暂无住院记录</div>';
+            return;
+        }
+
+        const admissionStatusMap = { 'admitted': '在院', 'transferred': '已转科', 'discharged': '已出院', 'absconded': '自动出院' };
+        const admissionStatusColor = { 'admitted': '#5cb85c', 'transferred': '#5bc0de', 'discharged': '#999', 'absconded': '#d9534f' };
+
+        elements.admissionListContent.innerHTML = admissions.map(a => `
+            <div class="admission-item" style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; margin-bottom:8px; background:#fff;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong>${a.patientName || '未知患者'}</strong>
+                    <span class="status-badge" style="background:${admissionStatusColor[a.status] || '#999'}; color:#fff; padding:2px 8px; border-radius:4px; font-size:12px;">
+                        ${admissionStatusMap[a.status] || a.status}
+                    </span>
+                </div>
+                <div style="color:#666; font-size:13px; margin-top:4px;">
+                    科室: ${a.department || '-'} | 床号: ${a.bedNumber || '-'} | 主治: ${a.attendingDoctor || '-'}
+                </div>
+                ${a.diagnosis ? `<div style="color:#666; font-size:13px;">诊断: ${a.diagnosis}</div>` : ''}
+                <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-outline" onclick="showDailyRecordModal('${a.id}')">病程记录</button>
+                    ${a.status === 'admitted' || a.status === 'transferred' ? `
+                        <button class="btn btn-sm btn-primary" onclick="transferDepartment('${a.id}')">转科</button>
+                        <button class="btn btn-sm btn-success" onclick="dischargePatient('${a.id}')">出院</button>
+                    ` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        console.error('渲染住院列表失败:', err);
+    }
+}
+
+function showDailyRecordModal(id) {
+    fetch(`${API_BASE_URL}/admissions/${id}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            const a = data.data;
+            const records = a.dailyRecords || [];
+            let html = `<h3>${a.patientName} - 病程记录</h3>`;
+            html += `<p style="color:#666;">科室: ${a.department} | 床号: ${a.bedNumber} | 入院日期: ${a.admissionDate ? new Date(a.admissionDate).toLocaleDateString('zh-CN') : '-'}</p>`;
+
+            if (records.length > 0) {
+                html += '<div style="margin:12px 0;">';
+                records.forEach((r, i) => {
+                    html += `
+                        <div style="border:1px solid #e8e8e8; border-radius:6px; padding:10px; margin-bottom:8px; background:#fafafa;">
+                            <div style="font-size:12px; color:#999;">第${i + 1}天 | ${r.date || '-'} | ${r.doctor || '-'}</div>
+                            <div style="margin-top:4px; white-space:pre-wrap;">${r.content || '-'}</div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            } else {
+                html += '<p style="color:#999;">暂无病程记录</p>';
+            }
+
+            html += `
+                <hr>
+                <h4>添加病程记录</h4>
+                <textarea id="dailyRecordInput" rows="4" style="width:100%; border:1px solid #ddd; border-radius:6px; padding:8px;" placeholder="请输入病程记录内容..."></textarea>
+                <div style="margin-top:8px; display:flex; gap:8px;">
+                    <button class="btn btn-primary" onclick="addDailyRecord('${id}')">提交记录</button>
+                    <button class="btn btn-outline" onclick="aiDailyTracking('${id}')">🤖 AI生成</button>
+                </div>
+            `;
+            showModal('病程记录', html);
+        })
+        .catch(err => {
+            console.error('获取病程记录失败:', err);
+            alert('获取病程记录失败');
+        });
+}
+window.showDailyRecordModal = showDailyRecordModal;
+
+async function addDailyRecord(id) {
+    const input = document.getElementById('dailyRecordInput');
+    const content = input ? input.value.trim() : '';
+    if (!content) {
+        alert('请输入病程记录内容');
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE_URL}/admissions/${id}/daily-record`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content, doctor: '当前医生' })
+        });
+        if (response.ok) {
+            alert('病程记录添加成功');
+            showDailyRecordModal(id); // 刷新
+        } else {
+            alert('添加失败');
+        }
+    } catch (err) {
+        alert('添加失败: ' + err.message);
+    }
+}
+window.addDailyRecord = addDailyRecord;
+
+async function aiDailyTracking(id) {
+    try {
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/admissions/${id}/ai-daily-tracking`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }), '每日追踪');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const rawLine of lines) {
+                let eventType = '';
+                let jsonStr = '';
+                if (rawLine.startsWith('event: ')) {
+                    eventType = rawLine.slice(7).trim();
+                } else if (rawLine.startsWith('data: ')) {
+                    jsonStr = rawLine.slice(6).trim();
+                }
+                if (!jsonStr) continue;
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (eventType === 'result') {
+                        const input = document.getElementById('dailyRecordInput');
+                        if (input && evt.record) {
+                            input.value = evt.record.content || '';
+                        }
+                    } else if (eventType === 'done') {
+                        alert('AI病程记录生成完成');
+                    } else if (eventType === 'error') {
+                        alert('AI生成失败: ' + (evt.message || '未知错误'));
+                    }
+                } catch (parseErr) {}
+            }
+        }
+    } catch (err) {
+        console.error('AI病程追踪失败:', err);
+        alert('AI病程追踪失败: ' + err.message);
+    }
+}
+window.aiDailyTracking = aiDailyTracking;
+
+async function transferDepartment(id) {
+    const newDept = prompt('请输入转入科室名称：');
+    if (!newDept) return;
+    const reason = prompt('请输入转科原因：') || '';
+    try {
+        const response = await fetch(`${API_BASE_URL}/admissions/${id}/transfer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newDepartment: newDept, reason })
+        });
+        if (response.ok) {
+            alert('转科成功');
+            renderAdmissionList();
+        } else {
+            alert('转科失败');
+        }
+    } catch (err) {
+        alert('转科失败: ' + err.message);
+    }
+}
+window.transferDepartment = transferDepartment;
+
+async function dischargePatient(id) {
+    if (!confirm('确定要办理出院吗？')) return;
+    const dischargeSummary = prompt('请输入出院小结（可选）：') || '';
+    try {
+        const response = await fetch(`${API_BASE_URL}/admissions/${id}/discharge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dischargeSummary })
+        });
+        if (response.ok) {
+            alert('出院办理成功');
+            renderAdmissionList();
+        } else {
+            alert('出院办理失败');
+        }
+    } catch (err) {
+        alert('出院办理失败: ' + err.message);
+    }
+}
+window.dischargePatient = dischargePatient;
+
+// ============================================================
+// 会诊模块
+// ============================================================
+async function aiFillConsultation() {
+    if (!currentPatient) {
+        alert('请先创建患者');
+        return;
+    }
+
+    const btn = elements.aiFillConsultationBtn;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> AI生成中...';
+    }
+
+    try {
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/consultations/ai-generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patientId: currentPatient.id })
+        }), '会诊填写');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        let eventType = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const rawLine of lines) {
+                // 会诊SSE格式: event: xxx\ndata: xxx
+                if (rawLine.startsWith('event: ')) {
+                    eventType = rawLine.slice(7).trim();
+                    continue;
+                }
+                if (!rawLine.startsWith('data: ')) continue;
+                const jsonStr = rawLine.slice(6).trim();
+                if (!jsonStr) continue;
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (eventType === 'progress') {
+                        console.log('[会诊AI]', evt.message);
+                    } else if (eventType === 'result') {
+                        // 填充表单
+                        if (elements.consultationTypeSelect) elements.consultationTypeSelect.value = evt.type || 'regular';
+                        if (elements.consultReqDept) elements.consultReqDept.value = evt.requestingDepartment || '';
+                        if (elements.consultConsultDept) elements.consultConsultDept.value = evt.consultingDepartment || '';
+                        if (elements.consultReason) elements.consultReason.value = evt.reason || '';
+                        if (elements.consultDiagnosis) elements.consultDiagnosis.value = evt.diagnosis || '';
+                    } else if (eventType === 'done') {
+                        console.log('[会诊AI] 完成');
+                    } else if (eventType === 'error') {
+                        alert('AI生成失败: ' + (evt.message || '未知错误'));
+                    }
+                } catch (parseErr) {}
+            }
+        }
+    } catch (err) {
+        console.error('AI一键填写会诊失败:', err);
+        alert('AI一键填写失败: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>🤖</span> AI一键填写';
+        }
+    }
+}
+
+async function submitConsultation() {
+    if (!currentPatient) {
+        alert('请先创建患者');
+        return;
+    }
+    const type = elements.consultationTypeSelect ? elements.consultationTypeSelect.value : 'regular';
+    const reqDept = elements.consultReqDept ? elements.consultReqDept.value : '';
+    const consultDept = elements.consultConsultDept ? elements.consultConsultDept.value : '';
+    const reason = elements.consultReason ? elements.consultReason.value : '';
+    const diagnosis = elements.consultDiagnosis ? elements.consultDiagnosis.value : '';
+
+    if (!consultDept) {
+        alert('请选择会诊科室');
+        return;
+    }
+
+    const body = {
+        patientId: currentPatient.id,
+        patientName: currentPatient.name,
+        type: type,
+        requestingDepartment: reqDept,
+        consultingDepartment: consultDept,
+        requestingDoctor: '',
+        reason: reason,
+        diagnosis: diagnosis,
+        status: 'pending'
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/consultations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                alert('会诊申请提交成功！');
+                renderConsultationList();
+                if (elements.consultReason) elements.consultReason.value = '';
+                if (elements.consultDiagnosis) elements.consultDiagnosis.value = '';
+            } else {
+                alert('提交失败: ' + (data.message || '未知错误'));
+            }
+        } else {
+            alert('提交会诊申请失败');
+        }
+    } catch (err) {
+        console.error('提交会诊失败:', err);
+        alert('提交会诊申请失败: ' + err.message);
+    }
+}
+
+async function renderConsultationList() {
+    if (!elements.consultationListContent) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/consultations`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.success) return;
+
+        const consultations = data.data || [];
+        const consultTypeMap = { 'regular': '普通会诊', 'emergency': '急会诊', 'multi': '多学科会诊' };
+        const consultStatusMap = { 'pending': '待会诊', 'in_progress': '会诊中', 'completed': '已完成', 'cancelled': '已取消' };
+        const consultStatusColor = { 'pending': '#f0ad4e', 'in_progress': '#0275d8', 'completed': '#5cb85c', 'cancelled': '#d9534f' };
+
+        if (consultations.length === 0) {
+            elements.consultationListContent.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">暂无会诊记录</div>';
+            return;
+        }
+
+        elements.consultationListContent.innerHTML = consultations.map(c => `
+            <div class="consultation-item" style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; margin-bottom:8px; background:#fff;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong>${c.patientName || '未知患者'}</strong>
+                    <span class="status-badge" style="background:${consultStatusColor[c.status] || '#999'}; color:#fff; padding:2px 8px; border-radius:4px; font-size:12px;">
+                        ${consultStatusMap[c.status] || c.status}
+                    </span>
+                </div>
+                <div style="color:#666; font-size:13px; margin-top:4px;">
+                    类型: ${consultTypeMap[c.type] || c.type} | 申请科室: ${c.requestingDepartment || '-'} → 会诊科室: ${c.consultingDepartment || '-'}
+                </div>
+                ${c.reason ? `<div style="color:#666; font-size:13px;">原因: ${c.reason}</div>` : ''}
+                <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+                    ${c.status === 'pending' ? `
+                        <button class="btn btn-sm btn-primary" onclick="updateConsultationStatus('${c.id}','in_progress')">开始会诊</button>
+                        <button class="btn btn-sm btn-outline" onclick="aiGenerateOpinion('${c.id}', this)">🤖 AI意见</button>
+                    ` : ''}
+                    ${c.status === 'in_progress' ? `
+                        <button class="btn btn-sm btn-success" onclick="updateConsultationStatus('${c.id}','completed')">完成</button>
+                        <button class="btn btn-sm btn-outline" onclick="aiGenerateOpinion('${c.id}', this)">🤖 AI意见</button>
+                    ` : ''}
+                    ${c.status !== 'completed' && c.status !== 'cancelled' ? `
+                        <button class="btn btn-sm btn-danger" onclick="updateConsultationStatus('${c.id}','cancelled')">取消</button>
+                    ` : ''}
+                </div>
+                ${c.aiOpinion ? `
+                    <div style="margin-top:8px; padding:8px; background:#f0f7ff; border-radius:4px; font-size:13px; white-space:pre-wrap;">
+                        <strong>🤖 AI会诊意见：</strong><br>${c.aiOpinion}
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+    } catch (err) {
+        console.error('渲染会诊列表失败:', err);
+    }
+}
+
+async function aiGenerateOpinion(id, btn) {
+    // 显示加载状态
+    let originalText = '';
+    if (btn) {
+        originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '⏳ 生成中...';
+    }
+    try {
+        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/consultations/${id}/ai-opinion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }), '会诊意见');
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6).trim();
+                if (!jsonStr) continue;
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (evt.type === 'status') {
+                        console.log('[会诊AI]', evt.message);
+                    } else if (evt.type === 'token') {
+                        // 实时token更新 - 可以后续添加流式显示
+                    } else if (evt.type === 'result') {
+                        // 显示AI会诊意见
+                        const opinion = evt.aiOpinion || '';
+                        if (opinion) {
+                            // 尝试填入会诊详情弹窗的意见区域
+                            const opinionEl = document.getElementById('consultationOpinionDisplay');
+                            if (opinionEl) {
+                                opinionEl.textContent = opinion;
+                                opinionEl.style.display = 'block';
+                            } else {
+                                // 如果没有弹窗，用alert显示
+                                alert('AI会诊意见：\n\n' + opinion);
+                            }
+                        }
+                    } else if (evt.type === 'done') {
+                        renderConsultationList();
+                    } else if (evt.type === 'error') {
+                        alert('AI生成失败: ' + (evt.message || '未知错误'));
+                    }
+                } catch (parseErr) {}
+            }
+        }
+    } catch (err) {
+        console.error('AI生成会诊意见失败:', err);
+        alert('AI生成会诊意见失败: ' + err.message);
+    } finally {
+        // 恢复按钮状态
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText || '🤖 AI意见';
+        }
+    }
+}
+
+async function updateConsultationStatus(id, status) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/consultations/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        if (response.ok) {
+            renderConsultationList();
+        } else {
+            alert('更新状态失败');
+        }
+    } catch (err) {
+        console.error('更新会诊状态失败:', err);
+        alert('更新状态失败: ' + err.message);
+    }
+}
+
+// ============================================================
+// 通用工具
+// ============================================================
+function showModal(title, content) {
+    // 检查是否已有自定义模态框
+    let modal = document.getElementById('customModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'customModal';
+        modal.className = 'modal hidden';
+        modal.innerHTML = `
+            <div class="modal-overlay"></div>
+            <div class="modal-content" style="max-width:700px; max-height:80vh; overflow-y:auto;">
+                <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #eee;">
+                    <h3 id="customModalTitle" style="margin:0;"></h3>
+                    <button class="modal-close" onclick="document.getElementById('customModal').classList.add('hidden')" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+                </div>
+                <div id="customModalBody" style="padding:16px;"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        // 点击遮罩关闭
+        modal.querySelector('.modal-overlay').addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+    }
+    document.getElementById('customModalTitle').textContent = title;
+    document.getElementById('customModalBody').innerHTML = content;
+    modal.classList.remove('hidden');
+}
+
+// ============================================================
+// AI设置处理（简化版：只管理模型选择）
+// ============================================================
+(function initSettings() {
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', async () => {
+            settingsModal.classList.remove('hidden');
+            await loadCurrentModel();
+        });
+    }
+
+    // 获取模型列表
+    const loadModelsBtn = document.getElementById('loadModelsBtn');
+    if (loadModelsBtn) {
+        loadModelsBtn.addEventListener('click', loadModelsList);
+    }
+
+    // 检测当前模型
+    const testModelBtn = document.getElementById('testModelBtn');
+    if (testModelBtn) {
+        testModelBtn.addEventListener('click', testCurrentModel);
+    }
+
+    // 加载当前模型显示
+    async function loadCurrentModel() {
+        const display = document.getElementById('currentModelDisplay');
+        try {
+            const response = await fetch(`${API_BASE_URL}/settings`);
+            const data = await response.json();
+            if (data.success && data.data) {
+                const model = data.data.model || '未配置';
+                const enabled = data.data.enabled;
+                if (display) {
+                    display.textContent = model + (enabled ? '' : ' (未启用)');
+                    display.style.color = enabled ? '#333' : '#999';
+                }
+            }
+        } catch (error) {
+            if (display) display.textContent = '加载失败';
+        }
+    }
+
+    // 获取模型列表
+    async function loadModelsList() {
+        const listEl = document.getElementById('modelsList');
+        const btn = document.getElementById('loadModelsBtn');
+        const resultEl = document.getElementById('modelTestResult');
+
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 获取中...'; }
+        if (listEl) listEl.innerHTML = '<div style="color:#999;padding:8px;">正在获取模型列表...</div>';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/settings/models`);
+            const data = await response.json();
+
+            if (data.success && data.data && data.data.length > 0) {
+                if (resultEl) {
+                    resultEl.textContent = `✅ 找到 ${data.data.length} 个模型`;
+                    resultEl.className = 'test-result success';
+                }
+                renderModelsList(data.data);
+            } else {
+                if (listEl) listEl.innerHTML = `<div style="color:#d9534f;padding:8px;">❌ ${data.message || '获取失败'}</div>`;
+                if (resultEl) {
+                    resultEl.textContent = '❌ ' + (data.message || '获取失败');
+                    resultEl.className = 'test-result error';
+                }
+            }
+        } catch (error) {
+            if (listEl) listEl.innerHTML = `<div style="color:#d9534f;padding:8px;">❌ 网络错误: ${error.message}</div>`;
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '📋 获取模型列表'; }
+        }
+    }
+
+    // 渲染模型列表
+    async function renderModelsList(models) {
+        const listEl = document.getElementById('modelsList');
+        if (!listEl) return;
+
+        // 获取当前模型
+        let currentModel = '';
+        try {
+            const resp = await fetch(`${API_BASE_URL}/settings`);
+            const d = await resp.json();
+            if (d.success) currentModel = d.data.model || '';
+        } catch (e) {}
+
+        listEl.innerHTML = models.map(m => {
+            const isCurrent = m.id === currentModel;
+            return `<div class="model-item" data-model-id="${m.id}" style="
+                padding:8px 12px; margin:4px 0; border-radius:6px; cursor:pointer;
+                border:1px solid ${isCurrent ? '#5cb85c' : '#e0e0e0'};
+                background:${isCurrent ? '#f0fff0' : '#fff'};
+                display:flex; justify-content:space-between; align-items:center;
+                transition:all 0.2s;
+            " onmouseover="this.style.borderColor='#5bc0de'" onmouseout="this.style.borderColor='${isCurrent ? '#5cb85c' : '#e0e0e0'}'">
+                <span style="font-size:14px;">${m.id}</span>
+                ${isCurrent ? '<span style="color:#5cb85c;font-size:12px;">✓ 当前使用</span>' : ''}
+            </div>`;
+        }).join('');
+
+        // 点击选择模型
+        listEl.querySelectorAll('.model-item').forEach(item => {
+            item.addEventListener('click', async () => {
+                const modelId = item.dataset.modelId;
+                await selectModel(modelId);
+            });
+        });
+    }
+
+    // 选择模型
+    async function selectModel(modelId) {
+        const resultEl = document.getElementById('modelTestResult');
+        if (resultEl) {
+            resultEl.textContent = '⏳ 正在切换到 ' + modelId + '...';
+            resultEl.className = 'test-result';
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: modelId })
+            });
+            const data = await response.json();
+            if (data.success) {
+                if (resultEl) {
+                    resultEl.textContent = '✅ 已切换到 ' + modelId;
+                    resultEl.className = 'test-result success';
+                }
+                // 更新显示
+                const display = document.getElementById('currentModelDisplay');
+                if (display) display.textContent = modelId;
+                // 刷新列表高亮
+                const listEl = document.getElementById('modelsList');
+                if (listEl) {
+                    listEl.querySelectorAll('.model-item').forEach(item => {
+                        const isCurrent = item.dataset.modelId === modelId;
+                        item.style.borderColor = isCurrent ? '#5cb85c' : '#e0e0e0';
+                        item.style.background = isCurrent ? '#f0fff0' : '#fff';
+                        const badge = item.querySelector('span:last-child');
+                        if (isCurrent && !badge.textContent.includes('当前')) {
+                            const span = document.createElement('span');
+                            span.style.cssText = 'color:#5cb85c;font-size:12px;';
+                            span.textContent = '✓ 当前使用';
+                            item.appendChild(span);
+                        } else if (!isCurrent && badge.textContent.includes('当前')) {
+                            badge.remove();
+                        }
+                    });
+                }
+            } else {
+                if (resultEl) {
+                    resultEl.textContent = '❌ 切换失败: ' + (data.message || '未知错误');
+                    resultEl.className = 'test-result error';
+                }
+            }
+        } catch (error) {
+            if (resultEl) {
+                resultEl.textContent = '❌ 网络错误: ' + error.message;
+                resultEl.className = 'test-result error';
+            }
+        }
+    }
+
+    // 检测当前模型
+    async function testCurrentModel() {
+        const resultEl = document.getElementById('modelTestResult');
+        const btn = document.getElementById('testModelBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 检测中...'; }
+        if (resultEl) {
+            resultEl.textContent = '🔍 正在检测...';
+            resultEl.className = 'test-result';
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/settings/test`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                if (resultEl) {
+                    resultEl.textContent = '✅ ' + (data.message || '连接成功') + ' | 模型: ' + (data.model || '');
+                    resultEl.className = 'test-result success';
+                }
+            } else {
+                if (resultEl) {
+                    resultEl.textContent = '❌ ' + (data.message || '检测失败');
+                    resultEl.className = 'test-result error';
+                }
+            }
+        } catch (error) {
+            if (resultEl) {
+                resultEl.textContent = '❌ 网络错误: ' + error.message;
+                resultEl.className = 'test-result error';
+            }
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🔍 检测当前模型'; }
+        }
+    }
+})();
+
+// ============================================================
+// 重新生成检查结果
+// ============================================================
+let examAbortController = null;
+
+function regenerateExamResult(examId) {
+    // 取消当前请求
+    if (examAbortController) {
+        examAbortController.abort();
+        examAbortController = null;
+    }
+
+    // 清除缓存结果
+    const examItem = currentExaminations.find(e => e.id === examId);
+    if (examItem) {
+        examItem.result = null;
+    }
+
+    // 重新调用显示函数
+    showExamResult(examId);
+}
+
+function appendRegenerateButton(examId) {
+    const modal = document.getElementById('examResultModal');
+    if (!modal) return;
+
+    // 移除旧的重新生成按钮
+    const oldBtn = modal.querySelector('.regenerate-section');
+    if (oldBtn) oldBtn.remove();
+
+    // 创建新按钮
+    const section = document.createElement('div');
+    section.className = 'regenerate-section';
+    section.style.cssText = 'text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #e0e0e0;';
+    section.innerHTML = `
+        <button class="btn btn-outline" onclick="regenerateExamResult('${examId}')" style="padding:8px 20px;border:1px solid var(--border-color);border-radius:8px;background:white;color:var(--text-primary);cursor:pointer;">
+            🔄 重新生成
+        </button>
+    `;
+
+    // 添加到模态框内容末尾
+    const modalBody = modal.querySelector('.modal-body');
+    if (modalBody) {
+        modalBody.appendChild(section);
     }
 }

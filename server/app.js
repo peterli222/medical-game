@@ -20,12 +20,18 @@ const patientRoutes = require('./routes/patients');
 const examinationRoutes = require('./routes/examinations');
 const medicineRoutes = require('./routes/medicines');
 const medicalRecordRoutes = require('./routes/medicalRecords');
+const surgeryRoutes = require('./routes/surgeries');
+const admissionRoutes = require('./routes/admissions');
+const consultationRoutes = require('./routes/consultations');
 const settingsRoutes = require('./routes/settings');
 
 app.use('/api/patients', patientRoutes);
 app.use('/api/examinations', examinationRoutes);
 app.use('/api/medicines', medicineRoutes);
 app.use('/api/medical-records', medicalRecordRoutes);
+app.use('/api/surgeries', surgeryRoutes);
+app.use('/api/admissions', admissionRoutes);
+app.use('/api/consultations', consultationRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // 获取统计数据

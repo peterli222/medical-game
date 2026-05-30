@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>杏林问诊 - 医疗模拟系统</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
-    <link rel="stylesheet" href="styles.css?v=20260523b">
+    <link rel="stylesheet" href="styles.css?v=20260530ee">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -38,8 +38,40 @@
                     <span class="tab-icon">📋</span>
                     <span>病历</span>
                 </button>
+                <button class="nav-tab" data-tab="surgery">
+                    <span class="tab-icon">🔪</span>
+                    <span>手术</span>
+                </button>
+                <button class="nav-tab" data-tab="admission">
+                    <span class="tab-icon">🏥</span>
+                    <span>住院</span>
+                </button>
+                <button class="nav-tab" data-tab="consultation-request">
+                    <span class="tab-icon">🤝</span>
+                    <span>会诊</span>
+                </button>
             </nav>
             <div class="header-actions">
+                <select id="departmentSelect" class="btn-department">
+                    <option value="">全部科室</option>
+                    <option value="内科">内科</option>
+                    <option value="外科">外科</option>
+                    <option value="妇产科">妇产科</option>
+                    <option value="儿科">儿科</option>
+                    <option value="皮肤科">皮肤科</option>
+                    <option value="耳鼻喉科">耳鼻喉科</option>
+                    <option value="眼科">眼科</option>
+                    <option value="口腔科">口腔科</option>
+                    <option value="神经内科">神经内科</option>
+                    <option value="骨科">骨科</option>
+                    <option value="泌尿科">泌尿科</option>
+                    <option value="心血管内科">心血管内科</option>
+                    <option value="呼吸内科">呼吸内科</option>
+                    <option value="消化内科">消化内科</option>
+                    <option value="中医科">中医科</option>
+                    <option value="急诊科">急诊科</option>
+                    <option value="全科">全科</option>
+                </select>
                 <button id="settingsBtn" class="btn btn-settings" title="AI设置">
                     <span>⚙️</span>
                 </button>
@@ -115,14 +147,9 @@
                         <div class="examination-form">
                             <h3>开具检查单</h3>
                             <div class="form-group">
-                                <label>🔍 疾病/症状搜索（推荐检查）</label>
-                                <input type="text" id="diseaseSearchInput" placeholder="输入症状或疾病名，如"发热咳嗽""肺炎""头痛"..." autocomplete="off">
-                                <div id="diseaseSearchDropdown" class="exam-search-dropdown hidden"></div>
-                            </div>
-                            <div class="form-group">
-                                <label>搜索检查项目</label>
-                                <input type="text" id="examSearchInput" placeholder="输入检查名称或疾病名称搜索..." autocomplete="off">
-                                <div id="examSearchDropdown" class="exam-search-dropdown hidden"></div>
+                                <label>🔍 搜索疾病/症状/检查项目</label>
+                                <input type="text" id="unifiedSearchInput" placeholder="输入疾病名、症状或检查名称搜索..." autocomplete="off">
+                                <div id="unifiedSearchDropdown" class="exam-search-dropdown hidden"></div>
                             </div>
                             <div class="form-group">
                                 <label>检查项目</label>
@@ -501,6 +528,197 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- 手术标签页 -->
+                <div id="surgeryTab" class="tab-content">
+                    <div class="surgery-container">
+                        <div class="surgery-form">
+                            <h3>手术申请</h3>
+                            <div class="form-group">
+                                <label>🔍 搜索手术</label>
+                                <input type="text" id="surgerySearchInput" placeholder="输入手术名称或科室搜索..." autocomplete="off">
+                                <div id="surgerySearchDropdown" class="search-dropdown hidden"></div>
+                            </div>
+                            <div class="form-group">
+                                <label>手术名称</label>
+                                <select id="surgeryTypeSelect">
+                                    <option value="">请选择手术</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>手术类型</label>
+                                <select id="surgeryCategorySelect">
+                                    <option value="elective">择期手术</option>
+                                    <option value="emergency">急诊手术</option>
+                                    <option value="outpatient">门诊手术</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>麻醉方式</label>
+                                <select id="anesthesiaSelect">
+                                    <option value="general">全身麻醉</option>
+                                    <option value="local">局部麻醉</option>
+                                    <option value="spinal">脊髓麻醉</option>
+                                    <option value="epidural">硬膜外麻醉</option>
+                                    <option value="nerve_block">神经阻滞</option>
+                                    <option value="sedation">镇静麻醉</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>术前诊断</label>
+                                <textarea id="surgeryDiagnosis" rows="2" placeholder="请输入术前诊断..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>手术指征</label>
+                                <textarea id="surgeryIndication" rows="2" placeholder="请输入手术指征..."></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button id="submitSurgeryBtn" class="btn btn-primary" disabled>
+                                    <span>📋</span> 提交手术申请
+                                </button>
+                                <button id="aiArrangeSurgeryBtn" class="btn btn-success">
+                                    <span>🤖</span> AI一键安排
+                                </button>
+                            </div>
+                        </div>
+                        <div class="surgery-list">
+                            <div class="surgery-list-header">
+                                <h3>手术记录</h3>
+                                <div class="surgery-filter">
+                                    <select id="surgeryStatusFilter">
+                                        <option value="all">全部状态</option>
+                                        <option value="pending">待审批</option>
+                                        <option value="approved">已审批</option>
+                                        <option value="preparing">术前准备</option>
+                                        <option value="in_progress">手术中</option>
+                                        <option value="completed">已完成</option>
+                                        <option value="cancelled">已取消</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="surgeryListContent">
+                                <div class="empty-state">
+                                    <span class="empty-icon">🔪</span>
+                                    <p>暂无手术记录</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 住院标签页 -->
+                <div id="admissionTab" class="tab-content">
+                    <div class="admission-container">
+                        <div class="admission-form">
+                            <h3>住院管理</h3>
+                            <div class="form-group">
+                                <label>科室</label>
+                                <select id="admissionDeptSelect">
+                                    <option value="">请选择科室</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>入院诊断</label>
+                                <textarea id="admissionDiagnosis" rows="2" placeholder="请输入入院诊断..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>治疗方案</label>
+                                <textarea id="admissionTreatment" rows="2" placeholder="请输入治疗方案..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>主治医生</label>
+                                <input type="text" id="admissionDoctor" placeholder="请输入主治医生姓名">
+                            </div>
+                            <div class="form-actions">
+                                <button id="submitAdmissionBtn" class="btn btn-primary">
+                                    <span>🏥</span> 办理入院
+                                </button>
+                                <button id="aiAdmitBtn" class="btn btn-success">
+                                    <span>🤖</span> AI一键住院
+                                </button>
+                            </div>
+                        </div>
+                        <div class="admission-list">
+                            <h3>住院记录</h3>
+                            <div id="admissionListContent">
+                                <div class="empty-state">
+                                    <span class="empty-icon">🏥</span>
+                                    <p>暂无住院记录</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 病程记录弹窗 -->
+                    <div id="dailyRecordModal" class="modal hidden">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3>📝 病程记录</h3>
+                                <button class="modal-close">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="dailyRecordList" class="daily-record-list"></div>
+                                <div class="form-group">
+                                    <label>新增病程记录</label>
+                                    <textarea id="newDailyRecord" rows="3" placeholder="请输入病程记录..."></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button id="addDailyRecordBtn" class="btn btn-primary">添加记录</button>
+                                    <button id="aiDailyTrackingBtn" class="btn btn-success">🤖 AI生成</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 会诊标签页 -->
+                <div id="consultationRequestTab" class="tab-content">
+                    <div class="consultation-container">
+                        <div class="consultation-form">
+                            <h3>会诊申请</h3>
+                            <div class="form-group">
+                                <label>会诊类型</label>
+                                <select id="consultationTypeSelect">
+                                    <option value="regular">普通会诊</option>
+                                    <option value="emergency">急会诊</option>
+                                    <option value="multi">多学科会诊</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>申请科室</label>
+                                <input type="text" id="consultReqDept" placeholder="申请科室">
+                            </div>
+                            <div class="form-group">
+                                <label>会诊科室</label>
+                                <input type="text" id="consultConsultDept" placeholder="会诊科室">
+                            </div>
+                            <div class="form-group">
+                                <label>会诊原因</label>
+                                <textarea id="consultReason" rows="3" placeholder="请输入会诊原因..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>目前诊断</label>
+                                <textarea id="consultDiagnosis" rows="2" placeholder="请输入目前诊断..."></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button id="submitConsultationBtn" class="btn btn-primary">
+                                    <span>📋</span> 提交会诊
+                                </button>
+                                <button id="aiFillConsultationBtn" class="btn btn-success">
+                                    <span>🤖</span> AI一键填写
+                                </button>
+                            </div>
+                        </div>
+                        <div class="consultation-list">
+                            <h3>会诊记录</h3>
+                            <div id="consultationListContent">
+                                <div class="empty-state">
+                                    <span class="empty-icon">🤝</span>
+                                    <p>暂无会诊记录</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
         </main>
 
@@ -560,74 +778,52 @@
         <div id="settingsModal" class="modal hidden">
             <div class="modal-content modal-md">
                 <div class="modal-header">
-                    <h3>⚙️ AI 设置</h3>
+                    <h3>⚙️ AI 模型设置</h3>
                     <button class="modal-close">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="settings-section">
-                        <h4>🔌 AI 连接配置</h4>
+                        <h4>🤖 模型管理</h4>
+                        <p style="color:#666;font-size:13px;margin-bottom:12px;">API地址和密钥已在服务器配置，此处只管理模型选择。</p>
                         <div class="form-group">
-                            <label>API 地址</label>
-                            <input type="text" id="settingsApiUrl" placeholder="https://api.example.com/v1/chat/completions">
-                            <small class="form-hint">OpenAI兼容的API地址</small>
+                            <label>当前模型</label>
+                            <div id="currentModelDisplay" style="padding:8px 12px;background:#f5f5f5;border-radius:6px;font-weight:500;color:#333;">加载中...</div>
                         </div>
-                        <div class="form-group">
-                            <label>API 密钥</label>
-                            <input type="password" id="settingsApiKey" placeholder="sk-...">
+                        <div class="settings-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button id="loadModelsBtn" class="btn btn-secondary">📋 获取模型列表</button>
+                            <button id="testModelBtn" class="btn btn-secondary">🔍 检测当前模型</button>
                         </div>
-                        <div class="form-group">
-                            <label>模型名称</label>
-                            <input type="text" id="settingsModel" placeholder="deepseek-chat">
-                        </div>
-                        <div class="settings-actions">
-                            <button id="testConnectionBtn" class="btn btn-secondary">🔗 测试连接</button>
-                            <div id="testResult" class="test-result"></div>
-                        </div>
-                    </div>
-
-                    <div class="settings-section">
-                        <h4>🤖 AI 功能开关</h4>
-                        <div class="toggle-group">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="settingsEnabled">
-                                <span>启用 AI 功能</span>
-                            </label>
-                        </div>
-                        <div class="toggle-group">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="settingsGenerateCases">
-                                <span>AI 生成病例</span>
-                            </label>
-                        </div>
-                        <div class="toggle-group">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="settingsGenerateDescriptions">
-                                <span>AI 生成患者描述</span>
-                            </label>
-                        </div>
-                        <div class="toggle-group">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="settingsGenerateExaminations">
-                                <span>AI 生成检查报告</span>
-                            </label>
-                        </div>
-                        <div class="toggle-group">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="settingsAiScoring">
-                                <span>AI 智能评分</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="settings-footer">
-                        <button id="saveSettingsBtn" class="btn btn-primary">💾 保存设置</button>
+                        <div id="modelTestResult" class="test-result" style="margin-top:8px;"></div>
+                        <div id="modelsList" style="margin-top:12px;max-height:300px;overflow-y:auto;"></div>
                     </div>
                 </div>
             </div>
         </div>
 
+        <!-- 手术详情弹窗 -->
+        <div id="surgeryDetailModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🔪 手术详情</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div id="surgeryDetailContent" class="modal-body"></div>
+            </div>
+        </div>
+
+        <!-- AI安排手术结果弹窗 -->
+        <div id="aiArrangeModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🤖 AI手术安排</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div id="aiArrangeContent" class="modal-body"></div>
+            </div>
+        </div>
+
     </div>
 
-    <script src="app.js?v=20260523b"></script>
+    <script src="app.js?v=20260530ff"></script>
 </body>
 </html>

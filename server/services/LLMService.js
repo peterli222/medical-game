@@ -79,6 +79,32 @@ class LLMService {
     return content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   }
 
+  // 构建患者基础信息块（统一格式，放在所有患者相关调用的 user message 最前面，提高 DeepSeek 缓存命中率）
+  buildPatientContextBlock(patientInfo, diseaseCase) {
+    const parts = [];
+    if (patientInfo) {
+      if (patientInfo.name) parts.push(`姓名：${patientInfo.name}`);
+      if (patientInfo.age) parts.push(`年龄：${patientInfo.age}岁`);
+      if (patientInfo.gender) parts.push(`性别：${patientInfo.gender}`);
+    }
+    if (diseaseCase) {
+      if (diseaseCase.name) parts.push(`疾病：${diseaseCase.name}`);
+      if (diseaseCase.symptoms && diseaseCase.symptoms.length > 0) {
+        parts.push(`症状：${diseaseCase.symptoms.join('、')}`);
+      }
+      if (diseaseCase.physicalSigns) {
+        const signs = [];
+        const ps = diseaseCase.physicalSigns;
+        if (ps.temperature) signs.push(`体温${ps.temperature}℃`);
+        if (ps.bloodPressure) signs.push(`血压${ps.bloodPressure}mmHg`);
+        if (ps.heartRate) signs.push(`心率${ps.heartRate}次/分`);
+        if (ps.breathRate) signs.push(`呼吸${ps.breathRate}次/分`);
+        if (signs.length > 0) parts.push(`体征：${signs.join(' ')}`);
+      }
+    }
+    return `【患者基础信息】${parts.join(' | ')}`;
+  }
+
   async chat(messages, temperature = 0.7, maxTokens = 1000) {
     const settings = this.getSettings();
     if (!settings.enabled || !settings.apiUrl || !settings.apiKey) {
@@ -153,7 +179,7 @@ class LLMService {
   }
 
   // 生成病例
-  async generateCase(availableMedicines = '', availableExaminations = '', recentCases = []) {
+  async generateCase(availableMedicines = '', availableExaminations = '', recentCases = [], department = '') {
     const prompt = `你是一个医学病例生成专家。请生成一个真实的门诊病例。
 
 要求：
@@ -163,6 +189,7 @@ class LLMService {
 4. 系统中可用的药品有：${availableMedicines || '暂无'}
 5. 系统中可用的检查有：${availableExaminations || '暂无'}
 6. 你推荐的药品和检查必须来自上述列表
+${department ? `7. 病例必须属于「${department}」科室的疾病范围` : ''}
 
 ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recentCases.join('、')}` : ''}
 
@@ -207,35 +234,103 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
     return null;
   }
 
-  // 生成检查报告
-  async generateExaminationDescription(examName, patientInfo, diseaseCase) {
-    const prompt = `你是一个${examName}检查报告生成专家。
+  // 生成病例（流式版本）
+  async generateCaseStream(availableMedicines, availableExaminations, onToken, recentCases = [], department = '') {
+    const prompt = `你是一个医学病例生成专家。请生成一个真实的门诊病例。
 
-患者信息：${patientInfo}
-疑似疾病：${diseaseCase}
+要求：
+1. 病例应该是常见的门诊疾病，不要太罕见或太严重
+2. 患者信息要完整真实
+3. 症状描述要详细但自然
+4. 系统中可用的药品有：${availableMedicines || '暂无'}
+5. 系统中可用的检查有：${availableExaminations || '暂无'}
+6. 你推荐的药品和检查必须来自上述列表
+${department ? `7. 病例必须属于「${department}」科室的疾病范围` : ''}
 
-请生成一份详细的${examName}检查报告，采用两段式格式：
+${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recentCases.join('、')}` : ''}
 
-第一段【检查数据】：
-- 列出客观的检查数据和指标
-- 包含正常值范围和实际测量值
-- 标注异常指标
-
-第二段【专科医生意见】：
-- 以"经检验，该患者..."开头
-- 分析检查数据的临床意义
-- 列出"考虑"或"疑似"的诊断（按可能性排序）
-- 给出进一步检查或治疗建议
-- 最后注明"本科意见仅供参考，建议结合临床综合判断"
-
-返回 JSON 格式：
+请返回 JSON 格式：
 {
-  "report": "完整的两段式检查报告文本"
+  "name": "患者姓名（中文）",
+  "gender": "男/女",
+  "age": 年龄（数字）,
+  "symptoms": "主要症状（简短描述）",
+  "disease": "疾病名称",
+  "diseaseDescription": "疾病详细描述",
+  "medicalHistory": "既往病史",
+  "physicalSigns": "体格检查发现",
+  "treatment": "推荐治疗方案",
+  "medicines": ["推荐药品1", "推荐药品2"],
+  "suggestedExaminations": ["推荐检查1", "推荐检查2"]
 }`;
 
     const messages = [
-      { role: 'system', content: '你是一个医学检查报告生成专家，只返回JSON格式。' },
+      { role: 'system', content: '你是一个医学病例生成专家，只返回JSON格式的病例数据。' },
       { role: 'user', content: prompt }
+    ];
+
+    const streamResult = await this.chatStream(messages, 0.8, 2000);
+    if (!streamResult.success) return null;
+
+    let fullContent = '';
+    let streamUsage = null;
+    const stream = streamResult.stream;
+
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.usage) streamUsage = parsed.usage;
+              if (parsed.choices && parsed.choices[0]) {
+                const delta = parsed.choices[0].delta;
+                if (delta && delta.content) {
+                  fullContent += delta.content;
+                  if (onToken) onToken(delta.content, fullContent);
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      });
+
+      stream.on('end', () => {
+        fullContent = this.cleanThinkingTags(fullContent);
+        try {
+          let content = fullContent;
+          content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            parsed._usage = streamUsage;
+            resolve(parsed);
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          console.error('Parse error:', e);
+          resolve(null);
+        }
+      });
+
+      stream.on('error', (error) => {
+        console.error('Stream error:', error);
+        reject(error);
+      });
+    });
+  }
+
+  // 生成检查报告
+  async generateExaminationDescription(examName, patientInfo, diseaseCase) {
+    const patientContext = this.buildPatientContextBlock(patientInfo, diseaseCase);
+
+    const messages = [
+      { role: 'system', content: '你是一个医学检查报告生成专家，只返回JSON格式。生成一份详细的检查报告，采用两段式格式：第一段【检查数据】列出客观的检查数据和指标，包含正常值范围和实际测量值，标注异常指标；第二段【专科医生意见】以"经检验，该患者..."开头，分析检查数据的临床意义，列出"考虑"或"疑似"的诊断（按可能性排序），给出进一步检查或治疗建议，最后注明"本科意见仅供参考，建议结合临床综合判断"。' },
+      { role: 'user', content: `【检查申请】${examName}\n${patientContext}\n\n请返回JSON格式：{"report": "完整的两段式检查报告文本"}` }
     ];
 
     const result = await this.chat(messages, 0.7, 1500);
@@ -246,7 +341,11 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          return parsed.report || content;
+          // 返回报告文本和usage信息
+          return {
+            report: parsed.report || content,
+            _usage: result.usage || null
+          };
         }
       } catch (e) {
         console.error('Parse error:', e);
@@ -255,9 +354,64 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
     return null;
   }
 
+  // 生成检查报告描述（流式版本）
+  async generateExaminationDescriptionStream(examName, bodyPart, patientInfo, diseaseCase, onToken) {
+    const patientContext = this.buildPatientContextBlock(patientInfo, diseaseCase);
+
+    const messages = [
+      { role: 'system', content: '你是一个医学检查报告生成专家。生成一份详细的检查报告，采用两段式格式：第一段【检查数据】列出客观的检查数据和指标，包含正常值范围和实际测量值，标注异常指标；第二段【专科医生意见】以"经检验，该患者..."开头，分析检查数据的临床意义，列出"考虑"或"疑似"的诊断（按可能性排序），给出进一步检查或治疗建议，最后注明"本科意见仅供参考，建议结合临床综合判断"。' },
+      { role: 'user', content: `【检查申请】${examName}\n${patientContext}` }
+    ];
+
+    const streamResult = await this.chatStream(messages, 0.7, 1500);
+    if (!streamResult.success) return null;
+
+    let fullContent = '';
+    let streamUsage = null;
+    const stream = streamResult.stream;
+
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.usage) streamUsage = parsed.usage;
+              if (parsed.choices && parsed.choices[0]) {
+                const delta = parsed.choices[0].delta;
+                if (delta && delta.content) {
+                  fullContent += delta.content;
+                  if (onToken) onToken(delta.content, fullContent);
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      });
+
+      stream.on('end', () => {
+        fullContent = this.cleanThinkingTags(fullContent);
+        resolve({ report: fullContent, _usage: streamUsage });
+      });
+
+      stream.on('error', (error) => {
+        console.error('Stream error:', error);
+        reject(error);
+      });
+    });
+  }
+
   // 评估诊断
   async evaluateDiagnosis(caseData, userDiagnosis, userData) {
-    const prompt = `你是一个医学教育评估专家。请评估学生的诊断。
+    const patientContext = this.buildPatientContextBlock(
+      userData.patientInfo || { name: caseData.name, age: caseData.age, gender: caseData.gender },
+      caseData
+    );
+
+    const prompt = `${patientContext}
 
 【病例信息】
 疾病：${caseData.disease}
@@ -335,7 +489,10 @@ ${caseData.conversationHistory || '无'}
         content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
+          const parsed = JSON.parse(jsonMatch[0]);
+          // 附加usage信息供前端显示缓存命中率
+          parsed._usage = result.usage || null;
+          return parsed;
         }
       } catch (e) {
         console.error('Parse error:', e);
@@ -345,32 +502,60 @@ ${caseData.conversationHistory || '无'}
   }
 
   // 生成患者描述（用于问诊开始时的流式输出）
-  async generatePatientDescriptionStream(diseaseCase, patientInfo) {
+  async generatePatientDescriptionStream(diseaseCase, patientInfo, onToken) {
     const returnVisitHint = diseaseCase.isReturnVisit 
       ? `这是一个复诊病人，上次诊断为"${diseaseCase.previousVisit?.lastDiagnosis}"，已服药${diseaseCase.previousVisit?.lastVisitDays}天。请在描述中提到是复诊，并说明上次诊断和用药情况。`
       : '';
 
-    const prompt = `你是一个患者角色扮演专家。请以第一人称描述患者的症状和感受。
-
-患者信息：${patientInfo}
-疾病：${diseaseCase.disease}
-症状：${diseaseCase.symptoms}
-${returnVisitHint}
-
-要求：
-1. 以"医生您好，我是[姓名]"开头
-2. 描述主要症状和不适
-3. 描述症状的持续时间和变化
-4. 语气自然、符合患者身份
-5. 不要直接说出疾病名称
-6. 控制在150字以内`;
+    const patientContext = this.buildPatientContextBlock(
+      { name: diseaseCase.name, age: diseaseCase.age, gender: diseaseCase.gender },
+      diseaseCase
+    );
 
     const messages = [
-      { role: 'system', content: '你是一个患者角色扮演专家，以第一人称描述症状。' },
-      { role: 'user', content: prompt }
+      { role: 'system', content: '你是一个患者角色扮演专家，以第一人称描述症状。用第一人称描述患者的症状和感受。以"医生您好，我是[姓名]"开头，描述主要症状和不适、症状的持续时间和变化。语气自然、符合患者身份，不要直接说出疾病名称，控制在150字以内。' },
+      { role: 'user', content: `${patientContext}\n${returnVisitHint}` }
     ];
 
-    return await this.chatStream(messages, 0.8, 500);
+    const streamResult = await this.chatStream(messages, 0.8, 500);
+    if (!streamResult.success) return null;
+
+    let fullContent = '';
+    let streamUsage = null;
+    const stream = streamResult.stream;
+
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.usage) streamUsage = parsed.usage;
+              if (parsed.choices && parsed.choices[0]) {
+                const delta = parsed.choices[0].delta;
+                if (delta && delta.content) {
+                  fullContent += delta.content;
+                  if (onToken) onToken(delta.content, fullContent);
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      });
+
+      stream.on('end', () => {
+        fullContent = this.cleanThinkingTags(fullContent);
+        resolve({ description: fullContent, _usage: streamUsage });
+      });
+
+      stream.on('error', (error) => {
+        console.error('Stream error:', error);
+        reject(error);
+      });
+    });
   }
 
   // 生成患者描述（非流式）
@@ -379,24 +564,14 @@ ${returnVisitHint}
       ? `这是一个复诊病人，上次诊断为"${diseaseCase.previousVisit?.lastDiagnosis}"，已服药${diseaseCase.previousVisit?.lastVisitDays}天。请在描述中提到是复诊，并说明上次诊断和用药情况。`
       : '';
 
-    const prompt = `你是一个患者角色扮演专家。请以第一人称描述患者的症状和感受。
-
-患者信息：${patientInfo}
-疾病：${diseaseCase.disease}
-症状：${diseaseCase.symptoms}
-${returnVisitHint}
-
-要求：
-1. 以"医生您好，我是[姓名]"开头
-2. 描述主要症状和不适
-3. 描述症状的持续时间和变化
-4. 语气自然、符合患者身份
-5. 不要直接说出疾病名称
-6. 控制在150字以内`;
+    const patientContext = this.buildPatientContextBlock(
+      { name: diseaseCase.name, age: diseaseCase.age, gender: diseaseCase.gender },
+      diseaseCase
+    );
 
     const messages = [
-      { role: 'system', content: '你是一个患者角色扮演专家，以第一人称描述症状。' },
-      { role: 'user', content: prompt }
+      { role: 'system', content: '你是一个患者角色扮演专家，以第一人称描述症状。用第一人称描述患者的症状和感受。以"医生您好，我是[姓名]"开头，描述主要症状和不适、症状的持续时间和变化。语气自然、符合患者身份，不要直接说出疾病名称，控制在150字以内。' },
+      { role: 'user', content: `${patientContext}\n${returnVisitHint}` }
     ];
 
     const result = await this.chat(messages, 0.8, 500);
@@ -404,22 +579,15 @@ ${returnVisitHint}
   }
 
   // 回答医学问题
-  async answerMedicalQuestion(question, caseInfo) {
-    const prompt = `你正在扮演一个患者。根据以下病例信息回答医生的问题。
-
-病例信息：${caseInfo}
-医生问：${question}
-
-要求：
-1. 以患者的身份回答
-2. 回答要符合病例描述
-3. 不要直接说出疾病名称
-4. 语气自然、口语化
-5. 控制在100字以内`;
+  async answerMedicalQuestion(question, caseInfo, patientInfo, diseaseCase, conversationHistory = []) {
+    const patientContext = this.buildPatientContextBlock(patientInfo, diseaseCase);
+    const historyContext = conversationHistory.length > 0 
+      ? '\n之前的对话：\n' + conversationHistory.slice(-6).map(h => (h.role === 'doctor' ? '医生' : '患者') + '：' + h.content).join('\n')
+      : '';
 
     const messages = [
-      { role: 'system', content: '你是一个患者角色扮演专家，以患者身份回答问题。' },
-      { role: 'user', content: prompt }
+      { role: 'system', content: '你是一个患者角色扮演专家，以患者身份回答问题。以患者的身份回答，回答要符合病例描述，不要直接说出疾病名称，语气自然、口语化，控制在100字以内。' },
+      { role: 'user', content: `${patientContext}${historyContext}\n\n医生问：${question}\n请用第一人称回答。` }
     ];
 
     const result = await this.chat(messages, 0.7, 300);

@@ -187,10 +187,10 @@ class PatientAgent {
   }
 
   // 生成新患者
-  generatePatient(recentCases = []) {
+  generatePatient(recentCases = [], department = '') {
     // Check if AI case generation is enabled
     if (llmService.isEnabled()) {
-      return this.generatePatientWithAI(recentCases);
+      return this.generatePatientWithAI(recentCases, department);
     }
 
     // Fallback: random selection from local cases (filter out recent ones)
@@ -228,7 +228,7 @@ class PatientAgent {
   }
 
   // Generate patient using AI
-  async generatePatientWithAI(recentCases = []) {
+  async generatePatientWithAI(recentCases = [], department = '') {
     try {
       // Get available medicine names and indications
       const medicineInfo = [];
@@ -244,7 +244,7 @@ class PatientAgent {
       }
       const availableExaminations = examInfo.join('、');
 
-      const aiCase = await llmService.generateCase(availableMedicines, availableExaminations, recentCases);
+      const aiCase = await llmService.generateCase(availableMedicines, availableExaminations, recentCases, department);
       if (aiCase && aiCase.name && aiCase.symptoms) {
         this.currentCase = aiCase;
         this.patient = new Patient();

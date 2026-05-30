@@ -2,6 +2,9 @@ const Patient = require('../models/Patient');
 const { ExaminationOrder } = require('../models/Examination');
 const { Prescription } = require('../models/Medicine');
 const MedicalRecord = require('../models/MedicalRecord');
+const { Surgery } = require('../models/Surgery');
+const { Admission } = require('../models/Admission');
+const { Consultation } = require('../models/Consultation');
 
 class DataStore {
   constructor() {
@@ -9,8 +12,12 @@ class DataStore {
     this.examinationOrders = new Map();
     this.prescriptions = new Map();
     this.medicalRecords = new Map();
+    this.surgeries = new Map();
+    this.admissions = new Map();
+    this.consultations = new Map();
     this.currentPatientId = null;
     this.patientAgents = new Map(); // 存储每个患者的智能体
+    this.occupiedBeds = new Map(); // 科室 -> Set(床位号)
   }
 
   // 患者管理
@@ -152,13 +159,172 @@ class DataStore {
     this.patientAgents.delete(patientId);
   }
 
+  // ==================== 手术管理 ====================
+  createSurgery(surgeryData) {
+    const surgery = new Surgery(surgeryData);
+    this.surgeries.set(surgery.id, surgery);
+    return surgery;
+  }
+
+  getSurgery(id) {
+    return this.surgeries.get(id);
+  }
+
+  getAllSurgeries() {
+    return Array.from(this.surgeries.values()).map(s => s.toJSON());
+  }
+
+  getPatientSurgeries(patientId) {
+    return Array.from(this.surgeries.values())
+      .filter(s => s.patientId === patientId)
+      .map(s => s.toJSON());
+  }
+
+  updateSurgery(id, updates) {
+    const surgery = this.surgeries.get(id);
+    if (surgery) {
+      Object.assign(surgery, updates);
+      surgery.updatedAt = new Date().toISOString();
+      return surgery;
+    }
+    return null;
+  }
+
+  updateSurgeryStatus(id, status) {
+    const surgery = this.surgeries.get(id);
+    if (surgery) {
+      surgery.status = status;
+      surgery.updatedAt = new Date().toISOString();
+      if (status === 'in_progress') {
+        surgery.startTime = new Date().toISOString();
+      } else if (status === 'completed') {
+        surgery.endTime = new Date().toISOString();
+      }
+      return surgery;
+    }
+    return null;
+  }
+
+  deleteSurgery(id) {
+    return this.surgeries.delete(id);
+  }
+
+  // ==================== 住院管理 ====================
+  createAdmission(admissionData) {
+    const admission = new Admission(admissionData);
+    this.admissions.set(admission.id, admission);
+    // 标记床位为已占用
+    const dept = admission.department;
+    const bed = admission.bedNumber;
+    if (dept && bed) {
+      if (!this.occupiedBeds.has(dept)) {
+        this.occupiedBeds.set(dept, new Set());
+      }
+      this.occupiedBeds.get(dept).add(bed);
+    }
+    return admission;
+  }
+
+  getAdmission(id) {
+    return this.admissions.get(id);
+  }
+
+  getAllAdmissions() {
+    return Array.from(this.admissions.values()).map(a => a.toJSON());
+  }
+
+  getPatientAdmissions(patientId) {
+    return Array.from(this.admissions.values())
+      .filter(a => a.patientId === patientId)
+      .map(a => a.toJSON());
+  }
+
+  updateAdmission(id, updates) {
+    const admission = this.admissions.get(id);
+    if (admission) {
+      Object.assign(admission, updates);
+      admission.updatedAt = new Date().toISOString();
+      return admission;
+    }
+    return null;
+  }
+
+  deleteAdmission(id) {
+    const admission = this.admissions.get(id);
+    if (admission) {
+      // 释放床位
+      const dept = admission.department;
+      const bed = admission.bedNumber;
+      if (dept && bed && this.occupiedBeds.has(dept)) {
+        this.occupiedBeds.get(dept).delete(bed);
+      }
+    }
+    return this.admissions.delete(id);
+  }
+
+  getOccupiedBeds(department) {
+    return this.occupiedBeds.get(department) || new Set();
+  }
+
+  // ==================== 会诊管理 ====================
+  createConsultation(consultationData) {
+    const consultation = new Consultation(consultationData);
+    this.consultations.set(consultation.id, consultation);
+    return consultation;
+  }
+
+  getConsultation(id) {
+    return this.consultations.get(id);
+  }
+
+  getAllConsultations() {
+    return Array.from(this.consultations.values()).map(c => c.toJSON());
+  }
+
+  getPatientConsultations(patientId) {
+    return Array.from(this.consultations.values())
+      .filter(c => c.patientId === patientId)
+      .map(c => c.toJSON());
+  }
+
+  updateConsultation(id, updates) {
+    const consultation = this.consultations.get(id);
+    if (consultation) {
+      Object.assign(consultation, updates);
+      consultation.updatedAt = new Date().toISOString();
+      return consultation;
+    }
+    return null;
+  }
+
+  updateConsultationStatus(id, status) {
+    const consultation = this.consultations.get(id);
+    if (consultation) {
+      consultation.status = status;
+      consultation.updatedAt = new Date().toISOString();
+      if (status === 'completed') {
+        consultation.completedDate = new Date().toISOString();
+      }
+      return consultation;
+    }
+    return null;
+  }
+
+  deleteConsultation(id) {
+    return this.consultations.delete(id);
+  }
+
   // 清理数据（用于新游戏）
   clearAll() {
     this.patients.clear();
     this.examinationOrders.clear();
     this.prescriptions.clear();
     this.medicalRecords.clear();
+    this.surgeries.clear();
+    this.admissions.clear();
+    this.consultations.clear();
     this.patientAgents.clear();
+    this.occupiedBeds.clear();
     this.currentPatientId = null;
   }
 
@@ -169,8 +335,13 @@ class DataStore {
       totalExaminations: this.examinationOrders.size,
       totalPrescriptions: this.prescriptions.size,
       totalMedicalRecords: this.medicalRecords.size,
+      totalSurgeries: this.surgeries.size,
+      totalAdmissions: this.admissions.size,
+      totalConsultations: this.consultations.size,
       completedExaminations: Array.from(this.examinationOrders.values()).filter(o => o.status === 'completed').length,
-      dispensedPrescriptions: Array.from(this.prescriptions.values()).filter(p => p.status === 'dispensed').length
+      dispensedPrescriptions: Array.from(this.prescriptions.values()).filter(p => p.status === 'dispensed').length,
+      completedSurgeries: Array.from(this.surgeries.values()).filter(s => s.status === 'completed').length,
+      activeAdmissions: Array.from(this.admissions.values()).filter(a => a.status === 'admitted').length
     };
   }
 }

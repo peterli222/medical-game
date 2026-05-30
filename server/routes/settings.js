@@ -10,16 +10,16 @@ const SETTINGS_FILE = path.join(__dirname, '../data/ai-settings.json');
 const ENCRYPTION_KEY = process.env.MEDICAL_APP_SECRET || crypto.createHash('sha256').update('medical-game-2024-secure-key').digest();
 const ALGORITHM = 'aes-256-cbc';
 
-// Default settings
+// Default settings - 优先从环境变量读取
 const DEFAULT_SETTINGS = {
-  apiUrl: '',
-  apiKey: '',
-  model: 'deepseek-chat',
-  enabled: false,
-  generateCases: true,
-  generateDescriptions: true,
-  generateExaminations: true,
-  aiScoring: true
+  apiUrl: process.env.AI_API_URL || '',
+  apiKey: process.env.AI_API_KEY || '',
+  model: process.env.AI_MODEL || 'deepseek-chat',
+  enabled: process.env.AI_ENABLED === 'true',
+  generateCases: process.env.AI_GENERATE_CASES !== 'false',
+  generateDescriptions: process.env.AI_GENERATE_DESCRIPTIONS !== 'false',
+  generateExaminations: process.env.AI_GENERATE_EXAMINATIONS !== 'false',
+  aiScoring: process.env.AI_SCORING !== 'false'
 };
 
 // Ensure data directory exists
@@ -169,7 +169,7 @@ router.post('/test', async (req, res) => {
         'Authorization': `Bearer ${settings.apiKey}`,
         'Content-Type': 'application/json'
       },
-      timeout: 15000
+      timeout: 30000
     });
     
     if (response.data && response.data.choices) {
@@ -179,6 +179,52 @@ router.post('/test', async (req, res) => {
     }
   } catch (error) {
     res.json({ success: false, message: `连接失败: ${error.message}` });
+  }
+});
+
+// GET /api/settings/models - List available models
+router.get('/models', async (req, res) => {
+  const settings = readSettings();
+  if (!settings.apiUrl || !settings.apiKey) {
+    return res.json({ success: false, message: '请先配置API地址和密钥' });
+  }
+
+  try {
+    const axios = require('axios');
+    // Convert chat completions URL to models list URL
+    let modelsUrl = settings.apiUrl;
+    if (modelsUrl.includes('/chat/completions')) {
+      modelsUrl = modelsUrl.replace('/chat/completions', '/models');
+    } else if (modelsUrl.endsWith('/')) {
+      modelsUrl += 'models';
+    } else {
+      modelsUrl += '/models';
+    }
+
+    const response = await axios.get(modelsUrl, {
+      headers: {
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000
+    });
+
+    if (response.data && response.data.data) {
+      // 过滤掉不适合对话的模型（embedding、vision、tts、rerank等）
+      const skipKeywords = ['embed', 'rerank', 'tts', 'vl-', 'vision', 'clip', 'safety', 'guard', 'parse', 'translate', 'codegemma', 'codellama', 'starcoder', 'granite-34b-code', 'granite-8b-code', 'deplot', 'recurrentgemma', 'fuyu', 'kosmos', 'nv-embed', 'nvclip', 'sarvam', 'sea-lion', 'zamba', 'ising', 'nemoretriever'];
+      const models = response.data.data
+        .filter(m => {
+          const id = m.id.toLowerCase();
+          return !skipKeywords.some(kw => id.includes(kw));
+        })
+        .map(m => ({ id: m.id, name: m.id }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      res.json({ success: true, data: models });
+    } else {
+      res.json({ success: false, message: '无法获取模型列表' });
+    }
+  } catch (error) {
+    res.json({ success: false, message: `获取模型列表失败: ${error.message}` });
   }
 });
 
