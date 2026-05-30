@@ -121,6 +121,108 @@ function debounce(func, wait) {
 
 
 // ============================================================
+// 流式 Thinking 标签过滤器 — 实时过滤 <think>...</think> 内容
+// ============================================================
+class ThinkingFilter {
+    constructor() {
+        this.state = 'normal';   // 'normal' | 'tag_open' | 'thinking' | 'tag_close'
+        this.buffer = '';         // 用于匹配标签的缓冲区
+        this.visibleText = '';    // 过滤后的可见文本
+        this.thinkingText = '';   // 思考过程文本（可用于日志/调试）
+        this.tagBuffer = '';      // 正在匹配的标签字符
+    }
+
+    // 处理一个token，返回可见文本
+    process(token) {
+        if (!token) return '';
+        let visible = '';
+
+        for (const char of token) {
+            if (this.state === 'normal') {
+                if (char === '<') {
+                    this.state = 'tag_open';
+                    this.tagBuffer = '<';
+                } else {
+                    visible += char;
+                    this.visibleText += char;
+                }
+            } else if (this.state === 'tag_open') {
+                this.tagBuffer += char;
+                if (this.tagBuffer === '<think') {
+                    // 继续等待 >
+                    this.state = 'tag_close_think_open';
+                } else if (this.tagBuffer.length >= 6 && !'<think'.startsWith(this.tagBuffer)) {
+                    // 不是 think 标签，输出缓冲区
+                    visible += this.tagBuffer;
+                    this.visibleText += this.tagBuffer;
+                    this.tagBuffer = '';
+                    this.state = 'normal';
+                    // 当前字符也需要处理
+                    if (char === '<') {
+                        this.state = 'tag_open';
+                        this.tagBuffer = '<';
+                    }
+                }
+            } else if (this.state === 'tag_close_think_open') {
+                if (char === '>') {
+                    this.state = 'thinking';
+                    this.tagBuffer = '';
+                } else {
+                    // 不是标准标签，输出缓冲区
+                    this.tagBuffer += char;
+                    visible += this.tagBuffer;
+                    this.visibleText += this.tagBuffer;
+                    this.tagBuffer = '';
+                    this.state = 'normal';
+                }
+            } else if (this.state === 'thinking') {
+                if (char === '<') {
+                    this.state = 'thinking_tag_close';
+                    this.tagBuffer = '<';
+                } else {
+                    this.thinkingText += char;
+                }
+            } else if (this.state === 'thinking_tag_close') {
+                this.tagBuffer += char;
+                const closeTag = '</think>';
+                if (closeTag.startsWith(this.tagBuffer)) {
+                    if (this.tagBuffer === closeTag) {
+                        this.state = 'normal';
+                        this.tagBuffer = '';
+                    }
+                } else {
+                    // 不是结束标签，仍在思考中
+                    this.thinkingText += this.tagBuffer;
+                    this.tagBuffer = '';
+                    this.state = 'thinking';
+                }
+            }
+        }
+        return visible;
+    }
+
+    // 获取当前所有可见文本
+    getVisible() { return this.visibleText; }
+
+    // 获取思考过程文本
+    getThinking() { return this.thinkingText; }
+
+    // 重置
+    reset() {
+        this.state = 'normal';
+        this.buffer = '';
+        this.visibleText = '';
+        this.thinkingText = '';
+        this.tagBuffer = '';
+    }
+
+    // 静态方法：清理已有的完整文本中的thinking标签
+    static clean(text) {
+        return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    }
+}
+
+// ============================================================
 // API 限流器 — 每分钟最多10次请求，超出排队等待
 // ============================================================
 const apiRateLimiter = {
@@ -527,6 +629,7 @@ async function createNewPatient() {
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
         // SSE 流式读取
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -572,7 +675,7 @@ async function createNewPatient() {
                         if (descEl) descEl.innerHTML = initialDesc.replace(/\n/g, '<br>');
                         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
                     } else if (evt.type === 'description') {
-                        initialDesc = evt.text || evt.content || evt.description || initialDesc;
+                        initialDesc = ThinkingFilter.clean(evt.text || evt.content || evt.description || initialDesc);
                         const descEl2 = elements.chatMessages.querySelector('#streaming-desc .message-content');
                         if (descEl2) descEl2.innerHTML = initialDesc.replace(/\n/g, '<br>');
                     } else if (evt.type === 'error') {
@@ -1215,6 +1318,7 @@ async function sendMessage() {
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
         // SSE 流式读取
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -1238,7 +1342,7 @@ async function sendMessage() {
                         replyContentEl.innerHTML = streamReply.replace(/\n/g, '<br>');
                         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
                     } else if (evt.type === 'done') {
-                        finalAnswer = evt.answer || evt.data?.answer || null;
+                        finalAnswer = ThinkingFilter.clean(evt.answer || evt.data?.answer || '');
                         finalHistory = evt.history || evt.data?.history || null;
                     } else if (evt.type === 'error') {
                         streamError = new Error(evt.message || '对话失败');
@@ -2411,6 +2515,7 @@ async function endConsultation() {
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
         // SSE 流式读取
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -2431,7 +2536,12 @@ async function endConsultation() {
                         const loadingSpan = elements.chatMessages.querySelector('.chat-message.system:last-child .ai-generating span');
                         if (loadingSpan) loadingSpan.textContent = evt.message || evt.status || '评分中...';
                     } else if (evt.type === 'token') {
-                        // 可选：显示评分进度文本
+                        // 显示评分进度
+                        const visible = thinkFilter.process(evt.token || evt.text || '');
+                        if (visible) {
+                            const loadingSpan = elements.chatMessages.querySelector('.chat-message.system:last-child .ai-generating span');
+                            if (loadingSpan) loadingSpan.textContent = visible.slice(-50);
+                        }
                     } else if (evt.type === 'result') {
                         if (evt.data) {
                             resultData = evt.data;
@@ -2863,6 +2973,7 @@ async function aiArrangeSurgery() {
             throw new Error(`HTTP ${response.status}`);
         }
 
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -3181,6 +3292,7 @@ async function aiAdmit() {
             throw new Error(`HTTP ${response.status}`);
         }
 
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -3357,6 +3469,7 @@ async function aiDailyTracking(id) {
             throw new Error(`HTTP ${response.status}`);
         }
 
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -3467,6 +3580,7 @@ async function aiFillConsultation() {
             throw new Error(`HTTP ${response.status}`);
         }
 
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -3643,6 +3757,7 @@ async function aiGenerateOpinion(id, btn) {
             throw new Error(`HTTP ${response.status}`);
         }
 
+        const thinkFilter = new ThinkingFilter();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -3662,10 +3777,15 @@ async function aiGenerateOpinion(id, btn) {
                     if (evt.type === 'status') {
                         console.log('[会诊AI]', evt.message);
                     } else if (evt.type === 'token') {
-                        // 实时token更新 - 可以后续添加流式显示
+                        // 实时token更新
+                        const visible = thinkFilter.process(evt.token || evt.text || '');
+                        const opinionDisplay = document.getElementById('consultationOpinionDisplay');
+                        if (opinionDisplay && visible) {
+                            opinionDisplay.textContent += visible;
+                        }
                     } else if (evt.type === 'result') {
-                        // 显示AI会诊意见
-                        const opinion = evt.aiOpinion || '';
+                        // 显示AI会诊意见（最终结果覆盖流式内容）
+                        const opinion = ThinkingFilter.clean(evt.aiOpinion || '');
                         if (opinion) {
                             // 尝试填入会诊详情弹窗的意见区域
                             const opinionEl = document.getElementById('consultationOpinionDisplay');

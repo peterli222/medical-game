@@ -738,7 +738,8 @@ ${conversationHistory.length > 0 ? conversationHistory.map(h => `${h.role === 'd
                       const delta = parsed.choices[0].delta;
                       if (delta && delta.content) {
                         fullContent += delta.content;
-                        sendEvent('token', { token: delta.content, full: fullContent });
+                        const visibleContent = llmService.cleanThinkingTags(fullContent);
+                        sendEvent('token', { token: delta.content, full: visibleContent });
                       }
                     }
                   } catch (e) {}

@@ -290,7 +290,8 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
                 const delta = parsed.choices[0].delta;
                 if (delta && delta.content) {
                   fullContent += delta.content;
-                  if (onToken) onToken(delta.content, fullContent);
+                  const visibleContent = this.cleanThinkingTags(fullContent);
+                  if (onToken) onToken(delta.content, visibleContent);
                 }
               }
             } catch (e) {}
@@ -384,7 +385,8 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
                 const delta = parsed.choices[0].delta;
                 if (delta && delta.content) {
                   fullContent += delta.content;
-                  if (onToken) onToken(delta.content, fullContent);
+                  const visibleContent = this.cleanThinkingTags(fullContent);
+                  if (onToken) onToken(delta.content, visibleContent);
                 }
               }
             } catch (e) {}
@@ -538,7 +540,8 @@ ${caseData.conversationHistory || '无'}
                 const delta = parsed.choices[0].delta;
                 if (delta && delta.content) {
                   fullContent += delta.content;
-                  if (onToken) onToken(delta.content, fullContent);
+                  const visibleContent = this.cleanThinkingTags(fullContent);
+                  if (onToken) onToken(delta.content, visibleContent);
                 }
               }
             } catch (e) {}

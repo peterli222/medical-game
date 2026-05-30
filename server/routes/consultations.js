@@ -212,7 +212,8 @@ router.post('/:id/ai-opinion', async (req, res) => {
                 if (delta && delta.content) {
                   const token = delta.content;
                   fullOpinion += token;
-                  sendEvent('token', { token, full: fullOpinion });
+                  const visibleContent = llmService.cleanThinkingTags(fullOpinion);
+                  sendEvent('token', { token, full: visibleContent });
                 }
               }
             } catch (e) {
