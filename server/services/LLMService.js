@@ -246,7 +246,7 @@ class LLMService {
 6. 你推荐的药品和检查必须来自上述列表
 ${department ? `7. 病例必须属于「${department}」科室的疾病范围` : ''}
 
-${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recentCases.join('、')}` : ''}
+${recentCases.length > 0 ? `最近10次已生成的疾病（严禁重复这些疾病！必须生成不同的疾病）：\n${recentCases.map((c, i) => `${i+1}. ${c}`).join('\n')}` : ''}
 
 请返回 JSON 格式：
 {
@@ -304,7 +304,7 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
 6. 你推荐的药品和检查必须来自上述列表
 ${department ? `7. 病例必须属于「${department}」科室的疾病范围` : ''}
 
-${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recentCases.join('、')}` : ''}
+${recentCases.length > 0 ? `最近10次已生成的疾病（严禁重复这些疾病！必须生成不同的疾病）：\n${recentCases.map((c, i) => `${i+1}. ${c}`).join('\n')}` : ''}
 
 请返回 JSON 格式：
 {

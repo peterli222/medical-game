@@ -681,7 +681,9 @@ async function createNewPatient() {
                         renderPatientInfo();
                         speechService.callPatient(currentPatient.name);
                         enableControls();
-                        saveRecentCase(currentPatient.symptoms || currentPatient.name);
+                        // 保存疾病名称用于避免重复生成相同疾病
+                        const diseaseName = (currentPatient._case && currentPatient._case.disease) || currentPatient.name;
+                        saveRecentCase(diseaseName);
                         currentPrescription = [];
                         currentExaminations = [];
                         renderPrescriptionItems();
