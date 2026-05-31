@@ -39,6 +39,14 @@ const API_PRESETS = [
     apiKey: 'dsr_l1gDqt2SQ_JOXXw6JYvWwnjSyCG1YW4j',
     model: 'deepseek-chat-fast',
     description: '本地DeepSeek代理'
+  },
+  {
+    id: 'siliconflow-r1',
+    name: 'SiliconFlow DeepSeek-R1',
+    apiUrl: 'https://api.siliconflow.cn/v1/chat/completions',
+    apiKey: 'sk-gedldbwqkutrjwjmrjyrngjhljkbqxcpezpkmbsloxewoktc',
+    model: 'deepseek-ai/DeepSeek-R1',
+    description: 'SiliconFlow平台，DeepSeek-R1推理模型'
   }
 ];
 

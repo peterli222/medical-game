@@ -44,6 +44,105 @@ let medicineDatabase = {};
 let medicalRecords = [];
 let currentRecordId = null;
 
+// ============================================================
+// AI请求限流器 — 每20秒最多1次请求，超出排队
+// ============================================================
+const aiRateLimiter = {
+    interval: 20000,           // 20秒间隔
+    lastRequestTime: 0,        // 上次请求发起时间
+    queue: [],                 // 排队队列 [{fn, resolve, reject, label}]
+    processing: false,         // 是否正在处理队列
+    _toastEl: null,            // 排队提示元素
+
+    // 获取排队提示元素（懒创建）
+    _getToast() {
+        if (!this._toastEl) {
+            this._toastEl = document.createElement('div');
+            this._toastEl.id = 'rateLimitToast';
+            this._toastEl.style.cssText = `
+                position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+                z-index: 10000; padding: 10px 20px; border-radius: 8px;
+                background: rgba(33, 150, 243, 0.95); color: #fff;
+                font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                transition: opacity 0.3s; pointer-events: none;
+                display: none; white-space: nowrap;
+            `;
+            document.body.appendChild(this._toastEl);
+        }
+        return this._toastEl;
+    },
+
+    _showToast(msg) {
+        const el = this._getToast();
+        el.textContent = msg;
+        el.style.display = 'block';
+        el.style.opacity = '1';
+    },
+
+    _hideToast() {
+        const el = this._getToast();
+        el.style.opacity = '0';
+        setTimeout(() => { el.style.display = 'none'; }, 300);
+    },
+
+    // 更新排队提示
+    _updateQueueToast() {
+        if (this.queue.length === 0) {
+            this._hideToast();
+            return;
+        }
+        const remaining = Math.max(0, this.lastRequestTime + this.interval - Date.now());
+        const sec = Math.ceil(remaining / 1000);
+        const pos = this.queue.length;
+        if (sec > 0) {
+            this._showToast(`⏳ 请求排队中（${pos}个等待），预计 ${sec}秒后处理...`);
+        } else {
+            this._showToast(`⏳ 请求排队中（${pos}个等待），即将处理...`);
+        }
+    },
+
+    // 核心：入队一个AI请求
+    // label: 可选的描述文字（用于调试）
+    // fn: 一个返回 Promise 的函数（实际执行请求的逻辑）
+    async enqueue(fn, label = 'AI请求') {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ fn, resolve, reject, label });
+            this._processQueue();
+        });
+    },
+
+    async _processQueue() {
+        if (this.processing) return;
+        this.processing = true;
+
+        while (this.queue.length > 0) {
+            const now = Date.now();
+            const elapsed = now - this.lastRequestTime;
+            const waitTime = Math.max(0, this.interval - elapsed);
+
+            if (waitTime > 0) {
+                this._updateQueueToast();
+                await new Promise(r => setTimeout(r, waitTime));
+            }
+
+            // 取出队首
+            const task = this.queue.shift();
+            this.lastRequestTime = Date.now();
+            this._updateQueueToast();
+
+            try {
+                const result = await task.fn();
+                task.resolve(result);
+            } catch (err) {
+                task.reject(err);
+            }
+        }
+
+        this._hideToast();
+        this.processing = false;
+    }
+};
+
 // 语音服务
 const speechService = {
     isSupported: 'speechSynthesis' in window,
@@ -519,11 +618,13 @@ async function createNewPatient() {
         } catch (e) {}
 
         const department = document.getElementById('departmentSelect')?.value || '';
-        const response = await fetch(`${API_BASE_URL}/patients/new-stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recentCases, department })
-        });
+        const response = await aiRateLimiter.enqueue(() =>
+            fetch(`${API_BASE_URL}/patients/new-stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recentCases, department })
+            }), '生成病例'
+        );
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -1254,11 +1355,13 @@ async function sendMessage(retryMsg) {
         const thinkingEl = replyDiv.querySelector('.ai-thinking');
         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 
-        const response = await fetch(`${API_BASE_URL}/patients/${currentPatient.id}/chat-stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question: message })
-        });
+        const response = await aiRateLimiter.enqueue(() =>
+            fetch(`${API_BASE_URL}/patients/${currentPatient.id}/chat-stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question: message })
+            }), '患者问诊'
+        );
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -1711,10 +1814,12 @@ async function showExamResult(id) {
         const examOrderId = createData.data.id;
         
         // 使用流式API获取检查结果
-        const streamResponse = await fetchWithTimeout(`${API_BASE_URL}/examinations/${examOrderId}/execute-stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        }, 180000);
+        const streamResponse = await aiRateLimiter.enqueue(() =>
+            fetchWithTimeout(`${API_BASE_URL}/examinations/${examOrderId}/execute-stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }, 180000), '执行检查'
+        );
         
         if (!streamResponse.ok) {
             throw new Error('执行检查失败');
@@ -2463,19 +2568,21 @@ async function endConsultation() {
             price: e.price || 50,
             resultDescription: (e.result && e.result.aiDescription) || (e.result && e.result.description) || ''
         }));
-        const response = await fetch(`${API_BASE_URL}/patients/${currentPatient.id}/evaluate-stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userDiagnosis,
-                examinationCosts: examCost,
-                prescriptionCosts: medCost,
-                questionCount,
-                userMedicines: currentPrescription.map(m => m.name),
-                userExaminations: currentExaminations.map(e => e.typeName || e.type),
-                examinationDetails: examDetails
-            })
-        });
+        const response = await aiRateLimiter.enqueue(() =>
+            fetch(`${API_BASE_URL}/patients/${currentPatient.id}/evaluate-stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userDiagnosis,
+                    examinationCosts: examCost,
+                    prescriptionCosts: medCost,
+                    questionCount,
+                    userMedicines: currentPrescription.map(m => m.name),
+                    userExaminations: currentExaminations.map(e => e.typeName || e.type),
+                    examinationDetails: examDetails
+                })
+            }), 'AI评分'
+        );
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -2776,19 +2883,21 @@ async function rescoreCurrentRecord() {
         const questionCount = record.questionCount || 0;
         
         // 调用评分API
-        const response = await fetch(`${API_BASE_URL}/patients/${record.patientId}/evaluate-stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userDiagnosis,
-                examinationCosts: examCost,
-                prescriptionCosts: medCost,
-                questionCount,
-                userMedicines: record.medicines || [],
-                userExaminations: record.examinations || [],
-                examinationDetails: record.examinationDetails || []
-            })
-        });
+        const response = await aiRateLimiter.enqueue(() =>
+            fetch(`${API_BASE_URL}/patients/${record.patientId}/evaluate-stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userDiagnosis,
+                    examinationCosts: examCost,
+                    prescriptionCosts: medCost,
+                    questionCount,
+                    userMedicines: record.medicines || [],
+                    userExaminations: record.examinations || [],
+                    examinationDetails: record.examinationDetails || []
+                })
+            }), '重新评分'
+        );
         
         if (!response.ok) throw new Error('HTTP ' + response.status);
         
@@ -3351,11 +3460,13 @@ async function aiFillConsultation() {
     }
 
     try {
-        const response = await fetch(`${API_BASE_URL}/consultations/ai-generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ patientId: currentPatient.id })
-        });
+        const response = await aiRateLimiter.enqueue(() =>
+            fetch(`${API_BASE_URL}/consultations/ai-generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ patientId: currentPatient.id })
+            }), 'AI生成会诊'
+        );
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -3543,10 +3654,12 @@ async function aiGenerateOpinion(id, btn) {
         btn.innerHTML = '⏳ 生成中...';
     }
     try {
-        const response = await fetch(`${API_BASE_URL}/consultations/${id}/ai-opinion`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
+        const response = await aiRateLimiter.enqueue(() =>
+            fetch(`${API_BASE_URL}/consultations/${id}/ai-opinion`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }), 'AI会诊意见'
+        );
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);

@@ -427,28 +427,53 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
   }
 
   // 生成检查报告
-  async generateExaminationDescription(examName, patientInfo, diseaseCase) {
+  async generateExaminationDescription(examName, bodyPart, patientInfo, diseaseCase) {
     const patientContext = this.buildPatientContextBlock(patientInfo, diseaseCase);
 
+    // 构建检查申请描述
+    let examDescription = `【检查申请】${examName}`;
+    if (bodyPart) {
+      examDescription += `\n【检查部位】${bodyPart}`;
+    }
+
+    // 获取疾病信息用于生成更准确的报告
+    const diseaseName = diseaseCase ? (diseaseCase.disease || diseaseCase.name || '') : '';
+    const symptoms = diseaseCase && diseaseCase.symptoms ? (Array.isArray(diseaseCase.symptoms) ? diseaseCase.symptoms.join('、') : diseaseCase.symptoms) : '';
+    const physicalSigns = diseaseCase && diseaseCase.physicalSigns ? JSON.stringify(diseaseCase.physicalSigns) : '';
+
     const messages = [
-      { role: 'system', content: '你是一个医学检查报告生成专家，只返回JSON格式。生成一份详细的检查报告，采用两段式格式：第一段【检查数据】列出客观的检查数据和指标，包含正常值范围和实际测量值，标注异常指标；第二段【专科医生意见】以"经检验，该患者..."开头，分析检查数据的临床意义，列出"考虑"或"疑似"的诊断（按可能性排序），给出进一步检查或治疗建议，最后注明"本科意见仅供参考，建议结合临床综合判断"。' },
-      { role: 'user', content: `【检查申请】${examName}\n${patientContext}\n\n请返回JSON格式：{"report": "完整的两段式检查报告文本"}` }
+      { role: 'system', content: '你是一个经验丰富的医学检查报告生成专家。你需要根据患者的疾病、症状和检查项目，生成一份真实、专业、详细的检查报告。\n\n报告格式要求（两段式）：\n\n【检查数据】\n列出该检查项目的客观数据和指标。要求：\n- 包含正常值范围和实际测量值\n- 异常用↑↓箭头标注\n- 数据要与患者疾病相关，不能随意编造\n- 不同检查项目要生成对应的专科数据（如血常规看白细胞/红细胞/血小板，CT看影像密度/大小/形态等）\n\n【专科医生意见】\n以"经检验，该患者..."开头。要求：\n- 分析检查数据的临床意义\n- 结合患者症状，列出"考虑"或"疑似"的诊断（按可能性排序）\n- 给出进一步检查或治疗建议\n- 最后注明"本科意见仅供参考，建议结合临床综合判断"\n\n重要：直接返回报告文本，不要包含JSON格式、markdown标记或其他包装。' },
+      { role: 'user', content: `${examDescription}\n${patientContext}\n${diseaseName ? `【初步诊断】${diseaseName}` : ''}\n${symptoms ? `【主要症状】${symptoms}` : ''}\n${physicalSigns ? `【体格检查】${physicalSigns}` : ''}\n\n请直接生成两段式检查报告文本，包含【检查数据】和【专科医生意见】两个部分。` }
     ];
 
     const result = await this.chat(messages, 0.7, 1500);
     if (result.success) {
       try {
         let content = result.content;
-        content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        // 清理可能的thinking标签
+        content = this.cleanThinkingTags(content);
+        // 清理可能的markdown代码块
+        content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        
+        // 尝试解析JSON（兼容旧格式）
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          // 返回报告文本和usage信息
-          return {
-            report: parsed.report || content,
-            _usage: result.usage || null
-          };
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            return {
+              report: parsed.report || content,
+              _usage: result.usage || null
+            };
+          } catch (parseError) {
+            // JSON解析失败，直接使用内容
+          }
         }
+        
+        // 直接返回内容作为报告
+        return {
+          report: content,
+          _usage: result.usage || null
+        };
       } catch (e) {
         console.error('Parse error:', e);
       }
@@ -460,9 +485,20 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
   async generateExaminationDescriptionStream(examName, bodyPart, patientInfo, diseaseCase, onToken) {
     const patientContext = this.buildPatientContextBlock(patientInfo, diseaseCase);
 
+    // 构建检查申请描述
+    let examDescription = `【检查申请】${examName}`;
+    if (bodyPart) {
+      examDescription += `\n【检查部位】${bodyPart}`;
+    }
+
+    // 获取疾病信息用于生成更准确的报告
+    const diseaseName = diseaseCase ? (diseaseCase.disease || diseaseCase.name || '') : '';
+    const symptoms = diseaseCase && diseaseCase.symptoms ? (Array.isArray(diseaseCase.symptoms) ? diseaseCase.symptoms.join('、') : diseaseCase.symptoms) : '';
+    const physicalSigns = diseaseCase && diseaseCase.physicalSigns ? JSON.stringify(diseaseCase.physicalSigns) : '';
+
     const messages = [
-      { role: 'system', content: '你是一个医学检查报告生成专家。生成一份详细的检查报告，采用两段式格式：第一段【检查数据】列出客观的检查数据和指标，包含正常值范围和实际测量值，标注异常指标；第二段【专科医生意见】以"经检验，该患者..."开头，分析检查数据的临床意义，列出"考虑"或"疑似"的诊断（按可能性排序），给出进一步检查或治疗建议，最后注明"本科意见仅供参考，建议结合临床综合判断"。' },
-      { role: 'user', content: `【检查申请】${examName}\n${patientContext}` }
+      { role: 'system', content: '你是一个经验丰富的医学检查报告生成专家。你需要根据患者的疾病、症状和检查项目，生成一份真实、专业、详细的检查报告。\n\n报告格式要求（两段式）：\n\n【检查数据】\n列出该检查项目的客观数据和指标。要求：\n- 包含正常值范围和实际测量值\n- 异常用↑↓箭头标注\n- 数据要与患者疾病相关，不能随意编造\n- 不同检查项目要生成对应的专科数据（如血常规看白细胞/红细胞/血小板，CT看影像密度/大小/形态等）\n\n【专科医生意见】\n以"经检验，该患者..."开头。要求：\n- 分析检查数据的临床意义\n- 结合患者症状，列出"考虑"或"疑似"的诊断（按可能性排序）\n- 给出进一步检查或治疗建议\n- 最后注明"本科意见仅供参考，建议结合临床综合判断"\n\n重要：直接返回报告文本，不要包含JSON格式、markdown标记或其他包装。' },
+      { role: 'user', content: `${examDescription}\n${patientContext}\n${diseaseName ? `【初步诊断】${diseaseName}` : ''}\n${symptoms ? `【主要症状】${symptoms}` : ''}\n${physicalSigns ? `【体格检查】${physicalSigns}` : ''}\n\n请直接生成两段式检查报告文本，包含【检查数据】和【专科医生意见】两个部分。` }
     ];
 
     const streamResult = await this.chatStream(messages, 0.7, 1500);
@@ -499,6 +535,22 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
 
       stream.on('end', () => {
         fullContent = this.cleanThinkingTags(fullContent);
+        // 清理可能的markdown代码块
+        fullContent = fullContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        
+        // 尝试解析JSON（兼容旧格式）
+        const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            resolve({ report: parsed.report || fullContent, _usage: streamUsage });
+            return;
+          } catch (parseError) {
+            // JSON解析失败，直接使用内容
+          }
+        }
+        
+        // 直接返回内容作为报告
         resolve({ report: fullContent, _usage: streamUsage });
       });
 
