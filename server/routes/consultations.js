@@ -138,6 +138,12 @@ router.post('/:id/ai-opinion', async (req, res) => {
       ? `检查记录：\n${examinations.map(e => `- ${e.examinationName}：${e.status === 'completed' ? (e.result?.description || '已完成') : e.status}`).join('\n')}`
       : '暂无检查记录';
 
+    // 附带检查结果（医生特别指定的）
+    const attachedExams = consultation.attachedExaminations || [];
+    const attachedContext = attachedExams.length > 0
+      ? `医生特别附带的检查结果（重点参考）：\n${attachedExams.map(e => `- ${e.name}：\n${e.fullReport || e.brief || '有结果'}`).join('\n')}`
+      : '';
+
     // 获取问诊记录（患者智能体的对话历史）
     const agent = dataStore.getPatientAgent(consultation.patientId);
     let inquiryContext = '暂无问诊记录';
@@ -170,7 +176,7 @@ router.post('/:id/ai-opinion', async (req, res) => {
 
 【${examContext}】
 
-【${inquiryContext}】
+${attachedContext ? `【${attachedContext}】\n\n` : ''}【${inquiryContext}】
 
 请给出详细的会诊意见，包括：
 1. 对患者病情的分析和评估

@@ -1898,6 +1898,35 @@ body {
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-outline:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-1px);
+}
+
+.btn-outline:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.score-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 /* 危险按钮 */
 .btn-danger {
     background: var(--danger-color);
@@ -4694,163 +4723,6 @@ button:disabled {
 }
 
 /* ========================================
-   住院标签页样式
-   ======================================== */
-
-.admission-container {
-    display: flex;
-    gap: 20px;
-    padding: 24px;
-    flex: 1;
-    overflow: auto;
-}
-
-.admission-form {
-    width: 40%;
-    background: var(--bg-color);
-    border-radius: var(--radius);
-    padding: 24px;
-}
-
-.admission-form h3 {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 20px;
-}
-
-.admission-list {
-    width: 60%;
-    background: var(--bg-color);
-    border-radius: var(--radius);
-    padding: 24px;
-    overflow-y: auto;
-}
-
-.admission-list h3 {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 16px;
-}
-
-.admission-item {
-    background: white;
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 12px;
-    border: 1px solid var(--border-color);
-    transition: all 0.2s;
-}
-
-.admission-item:hover {
-    border-color: rgba(37, 99, 235, 0.3);
-    box-shadow: var(--shadow-sm);
-}
-
-.admission-item-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.admission-item-header .ward-info {
-    font-weight: 600;
-    font-size: 15px;
-    color: var(--text-primary);
-}
-
-.admission-status-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-}
-
-.admission-status-badge.admitted {
-    background: #d1fae5;
-    color: #065f46;
-}
-
-.admission-status-badge.transferred {
-    background: #dbeafe;
-    color: #1e40af;
-}
-
-.admission-status-badge.discharged {
-    background: #f3f4f6;
-    color: #4b5563;
-}
-
-.admission-status-badge.absconded {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-.admission-item-info {
-    font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.8;
-}
-
-.admission-item-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-    border-top: 1px solid var(--border-color);
-    padding-top: 10px;
-}
-
-.admission-item-actions .btn {
-    padding: 6px 12px;
-    font-size: 12px;
-}
-
-/* 病程记录列表 */
-.daily-record-list {
-    margin-top: 16px;
-}
-
-.daily-record-list h4 {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid var(--primary-color);
-}
-
-.daily-record-item {
-    background: var(--bg-color);
-    border-radius: var(--radius-sm);
-    padding: 12px 16px;
-    margin-bottom: 8px;
-    border-left: 3px solid var(--primary-color);
-    font-size: 13px;
-}
-
-.daily-record-item .record-date {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-}
-
-.daily-record-item .record-content {
-    color: var(--text-primary);
-    line-height: 1.6;
-}
-
-.daily-record-item .record-doctor {
-    font-size: 12px;
-    color: var(--primary-color);
-    margin-top: 6px;
-    font-weight: 500;
-}
-
-/* ========================================
    会诊标签页样式
    ======================================== */
 
@@ -5048,32 +4920,4 @@ button:disabled {
 }
 
 
-/* ============================================================
-   API 限流状态条
-   ============================================================ */
-.rate-limit-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 9999;
-    padding: 8px 16px;
-    text-align: center;
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-.rate-limit-bar.hidden {
-    display: none;
-}
-.rate-limit-bar.queuing {
-    background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-    color: #856404;
-    border-bottom: 2px solid #ffc107;
-}
-.rate-limit-bar.active {
-    background: linear-gradient(135deg, #d1ecf1, #bee5eb);
-    color: #0c5460;
-    border-bottom: 2px solid #17a2b8;
-}
+

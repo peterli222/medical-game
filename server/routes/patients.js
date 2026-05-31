@@ -34,7 +34,7 @@ router.post('/new', async (req, res) => {
     // 确保patient是有效的Patient对象
     if (!patient || !patient.toJSON) {
       // 回退：强制生成本地患者
-      agent.generatePatient(recentCases || [], department || '');
+      agent._forceLocalGenerate(recentCases || [], department || '');
       patient = agent.patient;
     }
 
@@ -50,10 +50,23 @@ router.post('/new', async (req, res) => {
       patientData.previousVisit = agent.currentCase.previousVisit;
     }
 
+    // 返回病例数据（包含disease字段）
+    const caseData = agent.currentCase ? {
+      name: agent.currentCase.name,
+      disease: agent.currentCase.disease,
+      diseaseDescription: agent.currentCase.diseaseDescription,
+      symptoms: agent.currentCase.symptoms,
+      physicalSigns: agent.currentCase.physicalSigns,
+      treatment: agent.currentCase.treatment,
+      medicines: agent.currentCase.medicines,
+      suggestedExaminations: agent.currentCase.suggestedExaminations
+    } : null;
+
     res.json({
       success: true,
       data: {
         patient: patientData,
+        case: caseData,
         initialDescription: initialDescription
       }
     });
@@ -74,7 +87,12 @@ router.post('/new-stream', async (req, res) => {
   });
 
   const sendEvent = (type, data) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    } catch (e) {
+      console.warn('sendEvent JSON序列化失败:', type, e.message);
+      res.write(`data: ${JSON.stringify({ type, message: '数据序列化错误' })}\n\n`);
+    }
   };
 
   try {
@@ -114,7 +132,15 @@ router.post('/new-stream', async (req, res) => {
         if (aiCase && aiCase.name && aiCase.symptoms) {
           agent.currentCase = aiCase;
           agent.patient = new (require('../models/Patient'))();
-          const shuffledSymptoms = aiCase.symptoms.sort(() => 0.5 - Math.random());
+          // 确保symptoms是数组（AI有时返回字符串）
+          let symptomsList = aiCase.symptoms;
+          if (typeof symptomsList === 'string') {
+            symptomsList = symptomsList.split(/[，,、;；]/).map(s => s.trim()).filter(s => s);
+          }
+          if (!Array.isArray(symptomsList)) {
+            symptomsList = [String(symptomsList)];
+          }
+          const shuffledSymptoms = symptomsList.sort(() => 0.5 - Math.random());
           agent.patient.symptoms = shuffledSymptoms.slice(0, Math.floor(Math.random() * 3) + 3);
           agent.patient.medicalHistory = agent.generateMedicalHistory();
           agent.patient.allergies = Math.random() > 0.7 ? ['青霉素', '磺胺类药物'][Math.floor(Math.random() * 2)] : [];
@@ -129,18 +155,26 @@ router.post('/new-stream', async (req, res) => {
               chiefComplaint: '症状未完全缓解，前来复诊'
             };
           }
+          sendEvent('status', { message: 'AI病例生成成功' });
+        } else {
+          sendEvent('ai-failed', { message: 'AI返回的病例数据不完整（缺少姓名或症状）', stage: 'parse' });
+          // AI返回数据不完整，回退到本地病例
+          agent._forceLocalGenerate(recentCases || [], department || '');
         }
       } catch (e) {
         console.error('AI case generation failed, using local:', e.message);
+        sendEvent('ai-failed', { message: e.message || 'AI生成病例失败', stage: 'case' });
         // 回退到本地病例
-        agent.generatePatient(recentCases || [], department || '');
+        agent._forceLocalGenerate(recentCases || [], department || '');
       }
     } else {
-      agent.generatePatient(recentCases || [], department || '');
+      sendEvent('ai-failed', { message: 'AI未配置或已禁用', stage: 'config' });
+      agent._forceLocalGenerate(recentCases || [], department || '');
     }
 
     if (!agent.patient) {
-      agent.generatePatient(recentCases || [], department || '');
+      // 最终兜底：强制本地生成
+      agent._forceLocalGenerate(recentCases || [], department || '');
     }
 
     const patient = agent.patient;
@@ -157,7 +191,20 @@ router.post('/new-stream', async (req, res) => {
     if (agent.currentCase && agent.currentCase._usage) {
       patientData._caseUsage = agent.currentCase._usage;
     }
-    sendEvent('patient', { patient: patientData });
+
+    // 返回病例数据（包含disease字段）
+    const caseData = agent.currentCase ? {
+      name: agent.currentCase.name,
+      disease: agent.currentCase.disease,
+      diseaseDescription: agent.currentCase.diseaseDescription,
+      symptoms: agent.currentCase.symptoms,
+      physicalSigns: agent.currentCase.physicalSigns,
+      treatment: agent.currentCase.treatment,
+      medicines: agent.currentCase.medicines,
+      suggestedExaminations: agent.currentCase.suggestedExaminations
+    } : null;
+
+    sendEvent('patient', { patient: patientData, case: caseData });
 
     // 流式生成患者描述
     sendEvent('status', { message: 'AI正在生成患者描述...' });
@@ -241,7 +288,12 @@ router.post('/:id/chat-stream', async (req, res) => {
   });
 
   const sendEvent = (type, data) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    } catch (e) {
+      console.warn('sendEvent JSON序列化失败:', type, e.message);
+      res.write(`data: ${JSON.stringify({ type, message: '数据序列化错误' })}\n\n`);
+    }
   };
 
   try {
@@ -259,13 +311,15 @@ router.post('/:id/chat-stream', async (req, res) => {
           }
         );
       } catch (e) {
-        console.error('LLM流式回答失败，使用本地:', e.message);
+        console.error('LLM流式回答失败:', e.message);
+        sendEvent('error', { message: e.message || 'AI回答失败' });
+        res.end();
+        return;
       }
-    }
-
-    if (!answer) {
-      answer = agent.getFallbackAnswer(question);
-      sendEvent('token', { token: answer, full: answer });
+    } else {
+      sendEvent('error', { message: !llmService.isEnabled() ? 'AI未配置' : '患者数据不完整' });
+      res.end();
+      return;
     }
 
     // 记录对话历史
@@ -566,6 +620,35 @@ router.post('/:id/evaluate', async (req, res) => {
 });
 
 // 评估诊疗结果（流式SSE）
+// 生成本地评分总体评价
+function generateLocalComment(matchType, score, consultingComment, examCost, medCost) {
+  let comment = '';
+  if (matchType === 'exact') {
+    comment = '诊断准确，';
+  } else if (matchType === 'partial') {
+    comment = '诊断方向正确但不够精确，';
+  } else if (matchType === 'keyword') {
+    comment = '诊断部分正确，需加强对疾病特征的识别，';
+  } else {
+    comment = '诊断有误，建议复习相关疾病知识，';
+  }
+  if (examCost === 0) {
+    comment += '未做检查不利于确诊；';
+  } else if (examCost > 200) {
+    comment += '检查费用偏高，注意合理选择；';
+  }
+  if (medCost === 0) {
+    comment += '未开药；';
+  } else if (medCost > 150) {
+    comment += '用药费用偏高；';
+  }
+  comment += consultingComment + '。';
+  if (score >= 80) comment += '整体表现良好，继续保持！';
+  else if (score >= 60) comment += '有进步空间，注意诊疗细节。';
+  else comment += '需要加强学习，多做练习。';
+  return comment;
+}
+
 router.post('/:id/evaluate-stream', async (req, res) => {
   const { userDiagnosis, examinationCosts, prescriptionCosts, questionCount, userMedicines, userExaminations, examinationDetails } = req.body;
   const agent = dataStore.getPatientAgent(req.params.id);
@@ -584,7 +667,12 @@ router.post('/:id/evaluate-stream', async (req, res) => {
   });
 
   const sendEvent = (type, data) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    } catch (e) {
+      console.warn('sendEvent JSON序列化失败:', type, e.message);
+      res.write(`data: ${JSON.stringify({ type, message: '数据序列化错误' })}\n\n`);
+    }
   };
 
   const correctDiagnosis = agent.getCorrectDiagnosis();
@@ -626,7 +714,7 @@ router.post('/:id/evaluate-stream', async (req, res) => {
           if (patient.gender) patientContextParts.push(`性别：${patient.gender}`);
         }
         if (caseInfo) {
-          if (caseInfo.name) patientContextParts.push(`疾病：${caseInfo.name}`);
+          if (correctDiagnosis) patientContextParts.push(`疾病：${correctDiagnosis}`);
           if (caseInfo.symptoms && caseInfo.symptoms.length > 0) {
             patientContextParts.push(`症状：${caseInfo.symptoms.join('、')}`);
           }
@@ -647,72 +735,22 @@ router.post('/:id/evaluate-stream', async (req, res) => {
         const treatmentStr = caseInfo ? caseInfo.treatment || '无' : '无';
         const medicinesStr = caseInfo && caseInfo.medicines ? (Array.isArray(caseInfo.medicines) ? caseInfo.medicines.join('、') : caseInfo.medicines) : '无';
 
-        // 与 evaluateDiagnosis 相同的 prompt 模板
-        const prompt = `${patientContext}
-
-【病例信息】
-疾病：${correctDiagnosis}
-症状：${symptoms}
-体格检查：${physicalSignsStr}
-推荐治疗：${treatmentStr}
-推荐药品：${medicinesStr}
-
+        // 精简prompt，减少token消耗
+        const prompt = `患者：${patient ? `${patient.name}，${patient.age}岁，${patient.gender}` : '未知'}
 正确诊断：${correctDiagnosis}
 学生诊断：${userDiagnosis || '未填写'}
-
-推荐治疗方案：${recommended || '无'}
+症状：${symptoms}
+推荐治疗：${treatmentStr}
+推荐药品：${medicinesStr}
 学生用药：${(userMedicines || []).join('、') || '无'}
 学生检查：${(userExaminations || []).join('、') || '无'}
+检查费用：¥${examinationCosts || 0} 药品费用：¥${prescriptionCosts || 0} 问诊数：${questionCount || 0}
+问诊记录：${conversationHistory.length > 0 ? conversationHistory.slice(-6).map(h => `${h.role === 'doctor' ? '医' : '患'}：${(h.content || '').slice(0, 50)}`).join('|') : '无'}
 
-检查费用：¥${examinationCosts || 0}
-药品费用：¥${prescriptionCosts || 0}
-问诊问题数：${questionCount || 0}
+评分标准（总分100）：诊断45分（完全正确45/部分30-44/相关15-29/错误0-14）、检查20分、用药20分、问诊15分。
 
-【检查结果详情】
-${examinationDetails ? examinationDetails.map(e => `${e.typeName}：${e.resultDescription || '无结果'}`).join('\n') : '无'}
-
-【问诊记录】
-${conversationHistory.length > 0 ? conversationHistory.map(h => `${h.role === 'doctor' ? '医生' : '患者'}：${h.content}`).join('\n') : '无'}
-
-请从以下4个维度评分（总分100分）：
-
-1. 诊断准确性（45分）：
-   - 完全正确：45分
-   - 部分正确：20-30分
-   - 错误但相关：10-15分
-   - 完全错误：0分
-
-2. 检查合理性（20分）：
-   - 检查项目选择合理、覆盖必要检查：18-20分
-   - 基本合理但有遗漏：10-15分
-   - 检查过多或过少：5-10分
-   - 检查不合理：0-5分
-
-3. 用药合理性（20分）：
-   - 用药对症、剂量合理：18-20分
-   - 基本合理：10-15分
-   - 有明显问题：5-10分
-   - 用药错误：0-5分
-
-4. 问诊质量（15分）：
-   - 问诊全面、重点突出：13-15分
-   - 基本全面：8-12分
-   - 有遗漏：4-7分
-   - 问诊不足：0-3分
-
-返回 JSON 格式：
-{
-  "score": 总分,
-  "scoreBreakdown": {
-    "diagnosis": 诊断分数,
-    "examination": 检查分数,
-    "medicine": 用药分数,
-    "consultation": 问诊分数
-  },
-  "overallComment": "总体评价（150字以内）",
-  "matchType": "完全正确/部分正确/诊断错误",
-  "diagnosisMatch": true/false
-}`;
+只返回JSON，comment限15字内：
+{"score":总分,"scoreBreakdown":{"diagnosis":{"score":X,"comment":"点评"},"examination":{"score":X,"comment":"点评"},"medicine":{"score":X,"comment":"点评"},"consultation":{"score":X,"comment":"点评"}},"overallComment":"总体评价50字内","matchType":"exact/partial/keyword/wrong","diagnosisMatch":true/false}`;
 
         const messages = [
           { role: 'system', content: '你是一个医学教育评估专家，只返回JSON格式的评分结果。' },
@@ -742,7 +780,9 @@ ${conversationHistory.length > 0 ? conversationHistory.map(h => `${h.role === 'd
                         sendEvent('token', { token: delta.content, full: visibleContent });
                       }
                     }
-                  } catch (e) {}
+                  } catch (e) {
+                    // SSE流数据可能包含不完整的JSON，忽略解析错误
+                  }
                 }
               }
             });
@@ -754,7 +794,37 @@ ${conversationHistory.length > 0 ? conversationHistory.map(h => `${h.role === 'd
                 content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
-                  const parsed = JSON.parse(jsonMatch[0]);
+                  let jsonStr = jsonMatch[0];
+                  let parsed;
+                  try {
+                    parsed = JSON.parse(jsonStr);
+                  } catch (parseErr) {
+                    // JSON被截断，尝试修复
+                    console.warn('AI评分JSON解析失败，尝试正则提取. 错误:', parseErr.message);
+                    console.warn('原始内容前200字:', jsonStr.slice(0, 200));
+                    parsed = {};
+                    // 尝试用正则提取各个字段
+                    const scoreMatch = jsonStr.match(/"score"\s*:\s*(\d+)/);
+                    const matchTypeMatch = jsonStr.match(/"matchType"\s*:\s*"(\w+)"/);
+                    const diagnosisMatchBool = jsonStr.match(/"diagnosisMatch"\s*:\s*(true|false)/);
+                    const overallCommentMatch = jsonStr.match(/"overallComment"\s*:\s*"([^"]*)"/);
+                    if (scoreMatch) parsed.score = parseInt(scoreMatch[1]);
+                    if (matchTypeMatch) parsed.matchType = matchTypeMatch[1];
+                    if (diagnosisMatchBool) parsed.diagnosisMatch = diagnosisMatchBool[1] === 'true';
+                    if (overallCommentMatch) parsed.overallComment = overallCommentMatch[1];
+                    // 提取分项评分
+                    parsed.scoreBreakdown = {};
+                    const dims = ['diagnosis', 'examination', 'medicine', 'consultation'];
+                    for (const dim of dims) {
+                      const dimRegex = new RegExp(`"${dim}"\\s*:\\s*\\{[^}]*"score"\\s*:\\s*(\\d+)[^}]*"comment"\\s*:\\s*"([^"]*)"`, 'g');
+                      const dimMatch = dimRegex.exec(jsonStr);
+                      if (dimMatch) {
+                        parsed.scoreBreakdown[dim] = { score: parseInt(dimMatch[1]), comment: dimMatch[2] };
+                      }
+                    }
+                    console.warn('正则提取结果: score=', parsed.score, 'matchType=', parsed.matchType, 'breakdown dims:', Object.keys(parsed.scoreBreakdown).join(','));
+                  }
+                  console.warn('准备检查score, parsed.score=', parsed.score, 'type=', typeof parsed.score);
                   if (parsed.score !== undefined) {
                     let grade = '';
                     let gradeColor = '';
@@ -788,6 +858,9 @@ ${conversationHistory.length > 0 ? conversationHistory.map(h => `${h.role === 'd
                       aiScored: true
                     };
                     aiScored = true;
+                    console.warn('resultData已设置, aiScored=', aiScored, 'score=', resultData.score);
+                  } else {
+                    console.warn('parsed.score为undefined, 跳过AI评分');
                   }
                 }
               } catch (e) {
@@ -925,7 +998,7 @@ ${conversationHistory.length > 0 ? conversationHistory.map(h => `${h.role === 'd
         userDiagnosis: userDiagnosis || '未填写',
         recommended,
         scoreBreakdown,
-        overallComment: null,
+        overallComment: generateLocalComment(matchType, score, consultingComment, totalExamCost, totalMedCost),
         costs: {
           examination: totalExamCost,
           medicine: totalMedCost,

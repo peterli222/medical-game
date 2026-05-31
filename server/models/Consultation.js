@@ -29,6 +29,7 @@ class Consultation {
     this.status = data.status || 'pending';
     this.scheduledDate = data.scheduledDate || null;
     this.completedDate = data.completedDate || null;
+    this.attachedExaminations = data.attachedExaminations || [];
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
   }
@@ -49,6 +50,7 @@ class Consultation {
       status: this.status,
       scheduledDate: this.scheduledDate,
       completedDate: this.completedDate,
+      attachedExaminations: this.attachedExaminations,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt
     };

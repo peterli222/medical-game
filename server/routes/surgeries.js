@@ -4,10 +4,16 @@ const { Surgery, SURGERY_DATABASE, SURGERY_TYPES, ANESTHESIA_TYPES, SURGERY_STAT
 const dataStore = require('../services/DataStore');
 const llmService = require('../services/LLMService');
 
-// GET / - 获取所有手术列表
+// GET / - 获取手术列表（支持按patientId过滤）
 router.get('/', async (req, res) => {
   try {
-    const surgeries = await dataStore.getAllSurgeries();
+    const { patientId } = req.query;
+    let surgeries;
+    if (patientId) {
+      surgeries = dataStore.getPatientSurgeries(patientId);
+    } else {
+      surgeries = dataStore.getAllSurgeries();
+    }
     res.json({ success: true, data: surgeries });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

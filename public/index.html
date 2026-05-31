@@ -42,10 +42,6 @@
                     <span class="tab-icon">🔪</span>
                     <span>手术</span>
                 </button>
-                <button class="nav-tab" data-tab="admission">
-                    <span class="tab-icon">🏥</span>
-                    <span>住院</span>
-                </button>
                 <button class="nav-tab" data-tab="consultation-request">
                     <span class="tab-icon">🤝</span>
                     <span>会诊</span>
@@ -476,7 +472,12 @@
                             <div id="recordScorePanel" class="record-score-panel" style="display: none;">
                                 <div class="score-panel-header">
                                     <h4>📊 诊疗评估报告</h4>
-                                    <span id="scorePanelAiTag" class="ai-tag">🤖 AI评分</span>
+                                    <div class="score-panel-actions">
+                                        <span id="scorePanelAiTag" class="ai-tag">🤖 AI评分</span>
+                                        <button id="rescoreBtn" class="btn btn-sm btn-outline" onclick="rescoreCurrentRecord()" title="重新评分">
+                                            🔄 重新评分
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <!-- 总分概览 -->
@@ -606,70 +607,6 @@
                     </div>
                 </div>
 
-                <!-- 住院标签页 -->
-                <div id="admissionTab" class="tab-content">
-                    <div class="admission-container">
-                        <div class="admission-form">
-                            <h3>住院管理</h3>
-                            <div class="form-group">
-                                <label>科室</label>
-                                <select id="admissionDeptSelect">
-                                    <option value="">请选择科室</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>入院诊断</label>
-                                <textarea id="admissionDiagnosis" rows="2" placeholder="请输入入院诊断..."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>治疗方案</label>
-                                <textarea id="admissionTreatment" rows="2" placeholder="请输入治疗方案..."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>主治医生</label>
-                                <input type="text" id="admissionDoctor" placeholder="请输入主治医生姓名">
-                            </div>
-                            <div class="form-actions">
-                                <button id="submitAdmissionBtn" class="btn btn-primary">
-                                    <span>🏥</span> 办理入院
-                                </button>
-                                <button id="aiAdmitBtn" class="btn btn-success">
-                                    <span>🤖</span> AI一键住院
-                                </button>
-                            </div>
-                        </div>
-                        <div class="admission-list">
-                            <h3>住院记录</h3>
-                            <div id="admissionListContent">
-                                <div class="empty-state">
-                                    <span class="empty-icon">🏥</span>
-                                    <p>暂无住院记录</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- 病程记录弹窗 -->
-                    <div id="dailyRecordModal" class="modal hidden">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h3>📝 病程记录</h3>
-                                <button class="modal-close">&times;</button>
-                            </div>
-                            <div class="modal-body">
-                                <div id="dailyRecordList" class="daily-record-list"></div>
-                                <div class="form-group">
-                                    <label>新增病程记录</label>
-                                    <textarea id="newDailyRecord" rows="3" placeholder="请输入病程记录..."></textarea>
-                                </div>
-                                <div class="form-actions">
-                                    <button id="addDailyRecordBtn" class="btn btn-primary">添加记录</button>
-                                    <button id="aiDailyTrackingBtn" class="btn btn-success">🤖 AI生成</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- 会诊标签页 -->
                 <div id="consultationRequestTab" class="tab-content">
                     <div class="consultation-container">
@@ -698,6 +635,12 @@
                             <div class="form-group">
                                 <label>目前诊断</label>
                                 <textarea id="consultDiagnosis" rows="2" placeholder="请输入目前诊断..."></textarea>
+                            </div>
+                            <div class="form-group" id="attachedExamsGroup">
+                                <label>附带检查结果</label>
+                                <div id="attachedExamsList" style="max-height:200px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:6px; padding:8px; background:#fafafa;">
+                                    <div style="text-align:center; color:#999; padding:12px;">请先创建患者并完成检查</div>
+                                </div>
                             </div>
                             <div class="form-actions">
                                 <button id="submitConsultationBtn" class="btn btn-primary">
@@ -783,8 +726,13 @@
                 </div>
                 <div class="modal-body">
                     <div class="settings-section">
+                        <h4>🌐 API网关</h4>
+                        <div id="apiPresetsList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+                            <div style="color:#999;padding:8px;">加载中...</div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
                         <h4>🤖 模型管理</h4>
-                        <p style="color:#666;font-size:13px;margin-bottom:12px;">API地址和密钥已在服务器配置，此处只管理模型选择。</p>
                         <div class="form-group">
                             <label>当前模型</label>
                             <div id="currentModelDisplay" style="padding:8px 12px;background:#f5f5f5;border-radius:6px;font-weight:500;color:#333;">加载中...</div>
@@ -824,6 +772,6 @@
 
     </div>
 
-    <script src="app.js?v=20260531aa"></script>
+    <script src="app.js?v=20260531ae"></script>
 </body>
 </html>

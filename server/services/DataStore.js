@@ -20,8 +20,134 @@ class DataStore {
     this.occupiedBeds = new Map(); // 科室 -> Set(床位号)
   }
 
+  // 清理过期数据（默认保留最近2小时的数据）
+  cleanup(maxAgeMs = 2 * 60 * 60 * 1000) {
+    const now = Date.now();
+    let cleaned = 0;
+
+    // 清理过期患者及相关数据
+    for (const [id, patient] of this.patients) {
+      const createdAt = new Date(patient.createdAt).getTime();
+      if (now - createdAt > maxAgeMs) {
+        this.patients.delete(id);
+        this.patientAgents.delete(id);
+        // 清理关联的检查单、处方、病历等
+        this._cleanupPatientRelatedData(id);
+        cleaned++;
+      }
+    }
+
+    // 清理孤立的检查单（患者已不存在）
+    for (const [id, order] of this.examinationOrders) {
+      if (!this.patients.has(order.patientId)) {
+        this.examinationOrders.delete(id);
+        cleaned++;
+      }
+    }
+
+    // 清理孤立的处方
+    for (const [id, prescription] of this.prescriptions) {
+      if (!this.patients.has(prescription.patientId)) {
+        this.prescriptions.delete(id);
+        cleaned++;
+      }
+    }
+
+    // 清理孤立的病历
+    for (const [id, record] of this.medicalRecords) {
+      if (!this.patients.has(record.patientId)) {
+        this.medicalRecords.delete(id);
+        cleaned++;
+      }
+    }
+
+    // 清理孤立的手术记录
+    for (const [id, surgery] of this.surgeries) {
+      if (!this.patients.has(surgery.patientId)) {
+        this.surgeries.delete(id);
+        cleaned++;
+      }
+    }
+
+    // 清理孤立的住院记录
+    for (const [id, admission] of this.admissions) {
+      if (!this.patients.has(admission.patientId)) {
+        this.admissions.delete(id);
+        // 释放床位
+        const dept = admission.department;
+        const bed = admission.bedNumber;
+        if (dept && bed && this.occupiedBeds.has(dept)) {
+          this.occupiedBeds.get(dept).delete(bed);
+        }
+        cleaned++;
+      }
+    }
+
+    // 清理孤立的会诊记录
+    for (const [id, consultation] of this.consultations) {
+      if (!this.patients.has(consultation.patientId)) {
+        this.consultations.delete(id);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      console.log(`DataStore cleanup: 清理了 ${cleaned} 条过期数据`);
+    }
+    return cleaned;
+  }
+
+  // 清理患者相关的所有数据
+  _cleanupPatientRelatedData(patientId) {
+    // 清理检查单
+    for (const [id, order] of this.examinationOrders) {
+      if (order.patientId === patientId) {
+        this.examinationOrders.delete(id);
+      }
+    }
+    // 清理处方
+    for (const [id, prescription] of this.prescriptions) {
+      if (prescription.patientId === patientId) {
+        this.prescriptions.delete(id);
+      }
+    }
+    // 清理病历
+    for (const [id, record] of this.medicalRecords) {
+      if (record.patientId === patientId) {
+        this.medicalRecords.delete(id);
+      }
+    }
+    // 清理手术
+    for (const [id, surgery] of this.surgeries) {
+      if (surgery.patientId === patientId) {
+        this.surgeries.delete(id);
+      }
+    }
+    // 清理住院
+    for (const [id, admission] of this.admissions) {
+      if (admission.patientId === patientId) {
+        this.admissions.delete(id);
+        // 释放床位
+        const dept = admission.department;
+        const bed = admission.bedNumber;
+        if (dept && bed && this.occupiedBeds.has(dept)) {
+          this.occupiedBeds.get(dept).delete(bed);
+        }
+      }
+    }
+    // 清理会诊
+    for (const [id, consultation] of this.consultations) {
+      if (consultation.patientId === patientId) {
+        this.consultations.delete(id);
+      }
+    }
+  }
+
   // 患者管理
   createPatient(patientData) {
+    // 创建新患者前清理过期数据
+    this.cleanup();
+    
     const patient = new Patient(patientData);
     this.patients.set(patient.id, patient);
     this.currentPatientId = patient.id;

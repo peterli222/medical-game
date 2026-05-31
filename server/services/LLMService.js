@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const SETTINGS_FILE = path.join(__dirname, '../data/ai-settings.json');
 
 // 加密配置 - 必须与 settings.js 一致
-const ENCRYPTION_KEY = process.env.MEDICAL_APP_SECRET || crypto.createHash('sha256').update('medical-game-2024-secure-key').digest();
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(process.env.MEDICAL_APP_SECRET || 'medical-game-2024-secure-key').digest();
 const ALGORITHM = 'aes-256-cbc';
 
 class LLMService {
@@ -54,7 +54,9 @@ class LLMService {
         }
         return settings;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('读取AI设置文件失败，使用默认配置:', e.message);
+    }
     
     // 如果文件不存在，使用环境变量默认配置
     return this.defaultSettings;
@@ -79,6 +81,25 @@ class LLMService {
     return content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   }
 
+  // 规范化AI生成的病例数据（确保类型正确）
+  normalizeCaseData(caseData) {
+    if (!caseData) return caseData;
+    const toArray = (val) => {
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string') return val.split(/[,，、;；]+/).map(s => s.trim()).filter(s => s);
+      return val ? [val] : [];
+    };
+    caseData.symptoms = toArray(caseData.symptoms);
+    caseData.medicalHistory = toArray(caseData.medicalHistory);
+    caseData.treatment = toArray(caseData.treatment);
+    caseData.medicines = toArray(caseData.medicines);
+    caseData.suggestedExaminations = toArray(caseData.suggestedExaminations);
+    if (typeof caseData.physicalSigns === 'string') {
+      caseData.physicalSigns = { temperature: '36.5', bloodPressure: '120/80', heartRate: '78', breathRate: '18' };
+    }
+    return caseData;
+  }
+
   // 构建患者基础信息块（统一格式，放在所有患者相关调用的 user message 最前面，提高 DeepSeek 缓存命中率）
   buildPatientContextBlock(patientInfo, diseaseCase) {
     const parts = [];
@@ -88,9 +109,16 @@ class LLMService {
       if (patientInfo.gender) parts.push(`性别：${patientInfo.gender}`);
     }
     if (diseaseCase) {
-      if (diseaseCase.name) parts.push(`疾病：${diseaseCase.name}`);
-      if (diseaseCase.symptoms && diseaseCase.symptoms.length > 0) {
-        parts.push(`症状：${diseaseCase.symptoms.join('、')}`);
+      // AI生成的病例用disease字段，本地病例用name字段
+      const diseaseName = diseaseCase.disease || diseaseCase.name;
+      if (diseaseName) parts.push(`疾病：${diseaseName}`);
+      // 确保symptoms是数组
+      let symptoms = diseaseCase.symptoms;
+      if (typeof symptoms === 'string') {
+        symptoms = symptoms.split(/[,，、;；\s]+/).filter(s => s.trim());
+      }
+      if (symptoms && symptoms.length > 0) {
+        parts.push(`症状：${symptoms.join('、')}`);
       }
       if (diseaseCase.physicalSigns) {
         const signs = [];
@@ -140,8 +168,12 @@ class LLMService {
       }
       return { success: false, error: 'Invalid response' };
     } catch (error) {
-      console.error('LLM API Error:', error.message);
-      return { success: false, error: error.message };
+      let detail = error.message;
+      if (error.response && error.response.status === 429) {
+        detail = 'AI服务繁忙（请求过多），请稍后再试';
+      }
+      console.error('LLM API Error:', detail);
+      return { success: false, error: detail };
     }
   }
 
@@ -173,8 +205,31 @@ class LLMService {
 
       return { success: true, stream: response.data };
     } catch (error) {
-      console.error('LLM Stream Error:', error.message);
-      return { success: false, error: error.message };
+      let detail = error.message;
+      if (error.response) {
+        const status = error.response.status;
+        // 429 限流错误 - 给出友好提示
+        if (status === 429) {
+          detail = 'AI服务繁忙（请求过多），请稍后再试';
+        } else {
+          try {
+            const bodyStr = typeof error.response.data === 'string' 
+              ? error.response.data 
+              : (Buffer.isBuffer(error.response.data) 
+                ? error.response.data.toString('utf8', 0, 200) 
+                : JSON.stringify(error.response.data));
+            detail = `HTTP ${status}: ${String(bodyStr).slice(0, 200)}`;
+          } catch (jsonErr) {
+            detail = `HTTP ${status}: 服务器错误`;
+          }
+        }
+      } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        detail = 'AI接口超时（120秒无响应）';
+      } else if (error.code === 'ECONNREFUSED') {
+        detail = `AI接口连接被拒绝: ${error.address || ''}`;
+      }
+      console.error('LLM Stream Error:', detail);
+      return { success: false, error: detail };
     }
   }
 
@@ -198,20 +253,22 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
   "name": "患者姓名（中文）",
   "gender": "男/女",
   "age": 年龄（数字）,
-  "symptoms": "主要症状（简短描述）",
+  "symptoms": ["症状1", "症状2", "症状3"],
   "disease": "疾病名称",
   "diseaseDescription": "疾病详细描述",
-  "medicalHistory": "既往病史",
-  "physicalSigns": "体格检查发现",
-  "treatment": "推荐治疗方案",
+  "medicalHistory": ["既往病史1", "既往病史2"],
+  "physicalSigns": {"temperature": "36.5", "bloodPressure": "120/80", "heartRate": "78", "breathRate": "18"},
+  "treatment": ["治疗方案1", "治疗方案2"],
   "medicines": ["推荐药品1", "推荐药品2"],
   "suggestedExaminations": ["推荐检查1", "推荐检查2"],
   "isReturnVisit": false,
   "previousVisit": null
-}`;
+}
+
+重要：symptoms、medicalHistory、treatment、medicines、suggestedExaminations 必须是数组格式！physicalSigns 必须是对象格式！`;
 
     const messages = [
-      { role: 'system', content: '你是一个医学病例生成专家，只返回JSON格式的病例数据。' },
+      { role: 'system', content: '你是一个医学病例生成专家，只返回JSON格式的病例数据。所有数组字段必须用JSON数组格式。' },
       { role: 'user', content: prompt }
     ];
 
@@ -225,7 +282,7 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
         // 尝试提取JSON对象
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
+          return this.normalizeCaseData(JSON.parse(jsonMatch[0]));
         }
       } catch (e) {
         console.error('Parse error:', e);
@@ -254,23 +311,44 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
   "name": "患者姓名（中文）",
   "gender": "男/女",
   "age": 年龄（数字）,
-  "symptoms": "主要症状（简短描述）",
+  "symptoms": ["症状1", "症状2", "症状3"],
   "disease": "疾病名称",
   "diseaseDescription": "疾病详细描述",
-  "medicalHistory": "既往病史",
-  "physicalSigns": "体格检查发现",
-  "treatment": "推荐治疗方案",
+  "medicalHistory": ["既往病史1", "既往病史2"],
+  "physicalSigns": {"temperature": "36.5", "bloodPressure": "120/80", "heartRate": "78", "breathRate": "18"},
+  "treatment": ["治疗方案1", "治疗方案2"],
   "medicines": ["推荐药品1", "推荐药品2"],
   "suggestedExaminations": ["推荐检查1", "推荐检查2"]
-}`;
+}
+
+重要：symptoms、medicalHistory、treatment、medicines、suggestedExaminations 必须是数组格式！physicalSigns 必须是对象格式！`;
 
     const messages = [
-      { role: 'system', content: '你是一个医学病例生成专家，只返回JSON格式的病例数据。' },
+      { role: 'system', content: '你是一个医学病例生成专家，只返回JSON格式的病例数据。所有数组字段必须用JSON数组格式。' },
       { role: 'user', content: prompt }
     ];
 
     const streamResult = await this.chatStream(messages, 0.8, 2000);
-    if (!streamResult.success) return null;
+    if (!streamResult.success) {
+      // 流式失败，回退到非流式调用
+      console.log('Stream failed, falling back to non-stream:', streamResult.error);
+      const result = await this.chat(messages, 0.8, 2000);
+      if (result.success) {
+        try {
+          let content = result.content;
+          content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            parsed._usage = result.usage;
+            return this.normalizeCaseData(parsed);
+          }
+        } catch (e) {
+          console.error('Parse error in fallback:', e);
+        }
+      }
+      throw new Error(streamResult.error || 'AI接口调用失败');
+    }
 
     let fullContent = '';
     let streamUsage = null;
@@ -294,13 +372,36 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
                   if (onToken) onToken(delta.content, visibleContent);
                 }
               }
-            } catch (e) {}
+            } catch (e) {
+              // SSE流数据可能包含不完整的JSON，忽略解析错误
+            }
           }
         }
       });
 
-      stream.on('end', () => {
+      stream.on('end', async () => {
         fullContent = this.cleanThinkingTags(fullContent);
+        
+        // 如果流式没有返回任何内容，回退到非流式
+        if (!fullContent || fullContent.trim() === '') {
+          console.log('Stream returned empty content, falling back to non-stream');
+          try {
+            const result = await this.chat(messages, 0.8, 2000);
+            if (result.success) {
+              let content = result.content;
+              content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+              const jsonMatch = content.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                parsed._usage = result.usage;
+                return resolve(this.normalizeCaseData(parsed));
+              }
+            }
+          } catch (e) {
+            console.error('Fallback chat failed:', e.message);
+          }
+        }
+        
         try {
           let content = fullContent;
           content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
@@ -308,7 +409,7 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0]);
             parsed._usage = streamUsage;
-            resolve(parsed);
+            resolve(this.normalizeCaseData(parsed));
           } else {
             resolve(null);
           }
@@ -389,7 +490,9 @@ ${recentCases.length > 0 ? `最近已生成的病例，请避免重复：${recen
                   if (onToken) onToken(delta.content, visibleContent);
                 }
               }
-            } catch (e) {}
+            } catch (e) {
+              // SSE流数据可能包含不完整的JSON，忽略解析错误
+            }
           }
         }
       });
@@ -442,21 +545,21 @@ ${caseData.conversationHistory || '无'}
 请从以下4个维度评分（总分100分）：
 
 1. 诊断准确性（45分）：
-   - 完全正确：45分
-   - 部分正确：20-30分
-   - 错误但相关：10-15分
-   - 完全错误：0分
+   - 完全正确：45分（诊断名称与正确诊断完全一致）
+   - 部分正确：30-44分（诊断方向正确，但不够精确，如只诊断到大类）
+   - 错误但相关：15-29分（诊断与正确诊断有某种关联）
+   - 完全错误：0-14分
 
 2. 检查合理性（20分）：
    - 检查项目选择合理、覆盖必要检查：18-20分
-   - 基本合理但有遗漏：10-15分
-   - 检查过多或过少：5-10分
+   - 基本合理但有遗漏：12-17分
+   - 检查过多或过少：6-11分
    - 检查不合理：0-5分
 
 3. 用药合理性（20分）：
    - 用药对症、剂量合理：18-20分
-   - 基本合理：10-15分
-   - 有明显问题：5-10分
+   - 基本合理：12-17分
+   - 有明显问题：6-11分
    - 用药错误：0-5分
 
 4. 问诊质量（15分）：
@@ -465,17 +568,17 @@ ${caseData.conversationHistory || '无'}
    - 有遗漏：4-7分
    - 问诊不足：0-3分
 
-返回 JSON 格式：
+返回 JSON 格式（scoreBreakdown中每个维度必须包含score和comment字段）：
 {
   "score": 总分,
   "scoreBreakdown": {
-    "diagnosis": 诊断分数,
-    "examination": 检查分数,
-    "medicine": 用药分数,
-    "consultation": 问诊分数
+    "diagnosis": {"score": 分数, "comment": "诊断点评（30字以内）"},
+    "examination": {"score": 分数, "comment": "检查点评（30字以内）"},
+    "medicine": {"score": 分数, "comment": "用药点评（30字以内）"},
+    "consultation": {"score": 分数, "comment": "问诊点评（30字以内）"}
   },
-  "overallComment": "总体评价（150字以内）",
-  "matchType": "完全正确/部分正确/诊断错误",
+  "overallComment": "总体评价，包含优点和改进建议（200字以内）",
+  "matchType": "exact/partial/keyword/wrong",
   "diagnosisMatch": true/false
 }`;
 
@@ -544,7 +647,9 @@ ${caseData.conversationHistory || '无'}
                   if (onToken) onToken(delta.content, visibleContent);
                 }
               }
-            } catch (e) {}
+            } catch (e) {
+              // SSE流数据可能包含不完整的JSON，忽略解析错误
+            }
           }
         }
       });
@@ -595,6 +700,60 @@ ${caseData.conversationHistory || '无'}
 
     const result = await this.chat(messages, 0.7, 300);
     return result.success ? result.content : null;
+  }
+
+  // 回答医疗问题（流式版本）
+  async answerMedicalQuestionStream(question, patientInfo, diseaseCase, conversationHistory = [], onToken = null) {
+    const patientContext = this.buildPatientContextBlock(patientInfo, diseaseCase);
+    const historyContext = conversationHistory.length > 0
+      ? '\n之前的对话：\n' + conversationHistory.slice(-6).map(h => (h.role === 'doctor' ? '医生' : '患者') + '：' + h.content).join('\n')
+      : '';
+
+    const messages = [
+      { role: 'system', content: '你是一个患者角色扮演专家，以患者身份回答问题。以患者的身份回答，回答要符合病例描述，不要直接说出疾病名称，语气自然、口语化，控制在100字以内。' },
+      { role: 'user', content: `${patientContext}${historyContext}\n\n医生问：${question}\n请用第一人称回答。` }
+    ];
+
+    const streamResult = await this.chatStream(messages, 0.7, 300);
+    if (!streamResult.success) throw new Error(streamResult.error || 'AI接口调用失败');
+
+    let fullContent = '';
+    const stream = streamResult.stream;
+
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.choices && parsed.choices[0]) {
+                const delta = parsed.choices[0].delta;
+                if (delta && delta.content) {
+                  fullContent += delta.content;
+                  const visibleContent = this.cleanThinkingTags(fullContent);
+                  if (onToken) onToken(delta.content, visibleContent);
+                }
+              }
+            } catch (e) {
+              // SSE流数据可能包含不完整的JSON，忽略解析错误
+            }
+          }
+        }
+      });
+
+      stream.on('end', () => {
+        fullContent = this.cleanThinkingTags(fullContent);
+        resolve(fullContent);
+      });
+
+      stream.on('error', (error) => {
+        console.error('Chat stream error:', error);
+        reject(error);
+      });
+    });
   }
 }
 

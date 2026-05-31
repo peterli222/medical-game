@@ -190,8 +190,8 @@ const EXAMINATION_TYPES = {
     category: '影像学检查',
     price: 60,
     description: 'X射线摄影',
-    bodyParts: ['胸片', '腹平片', '骨关节'],
-    searchableDiseases: ['肺炎', '骨折', '气胸', '肺结核', '胸腔积液', '肠梗阻', '关节炎']
+    bodyParts: ['胸片', '腹平片', '骨关节', '颈椎', '腰椎', '胸椎', '骶椎', '四肢', '头颅', '骨盆', '肩关节', '膝关节', '踝关节', '腕关节', '肘关节', '髋关节', '手指', '足趾', '肋骨', '锁骨', '下颌骨', '鼻骨', '副鼻窦', '乳突'],
+    searchableDiseases: ['肺炎', '骨折', '气胸', '肺结核', '胸腔积液', '肠梗阻', '关节炎', '骨质疏松', '脊柱侧弯', '骨肿瘤']
   },
   ctScan: {
     id: 'ct_scan',
@@ -199,8 +199,17 @@ const EXAMINATION_TYPES = {
     category: '影像学检查',
     price: 280,
     description: '计算机断层扫描',
-    bodyParts: ['头部', '胸部', '腹部', '盆腔', '脊柱', '四肢'],
+    bodyParts: ['头部', '胸部', '腹部', '盆腔', '脊柱', '四肢', '颅脑', '颈椎', '腰椎', '膝关节', '肩关节', '髋关节', '踝关节', '腕关节', '肘关节', '肝脏', '肾脏', '胰腺', '肺部', '副鼻窦', '颞骨', '颌面部'],
     searchableDiseases: ['脑出血', '脑梗死', '肺炎', '肺癌', '肝癌', '骨折', '颅脑外伤', '肺栓塞']
+  },
+  enhancedCT: {
+    id: 'enhanced_ct',
+    name: '增强CT',
+    category: '影像学检查',
+    price: 560,
+    description: '增强计算机断层扫描（注射造影剂）',
+    bodyParts: ['头部', '胸部', '腹部', '盆腔', '肝脏', '肾脏', '胰腺', '肺部', '纵隔', '腹膜后', '肾上腺', '脾脏', '胆囊', '膀胱', '子宫', '前列腺', '甲状腺', '颈部'],
+    searchableDiseases: ['肝癌', '肺癌', '肾癌', '胰腺癌', '淋巴瘤', '血管瘤', '囊肿', '转移瘤', '肝硬化', '门脉高压']
   },
   mri: {
     id: 'mri',
@@ -208,7 +217,7 @@ const EXAMINATION_TYPES = {
     category: '影像学检查',
     price: 600,
     description: '磁共振成像',
-    bodyParts: ['头部', '脊柱', '关节', '腹部'],
+    bodyParts: ['头部', '脊柱', '关节', '腹部', '颈椎', '腰椎', '膝关节', '肩关节', '髋关节', '踝关节', '腕关节', '肘关节', '肝脏', '肾脏', '胰腺', '乳腺', '前列腺', '子宫', '卵巢', '膀胱', '心脏', '颅脑', '颌面部', '颞颌关节'],
     searchableDiseases: ['脑梗死', '脑肿瘤', '椎间盘突出', '半月板损伤', '脊髓损伤', '韧带损伤']
   },
   ultrasound: {
@@ -217,7 +226,7 @@ const EXAMINATION_TYPES = {
     category: '影像学检查',
     price: 120,
     description: '超声检查',
-    bodyParts: ['腹部', '心脏', '甲状腺', '乳腺', '泌尿系'],
+    bodyParts: ['腹部', '心脏', '甲状腺', '乳腺', '泌尿系', '颈动脉', '下肢血管', '浅表淋巴结', '妇产科', '前列腺', '肝胆胰脾', '肾脏输尿管膀胱', '子宫附件', '睾丸', '眼眶', '腮腺', '颌下腺'],
     searchableDiseases: ['胆结石', '肾结石', '肝硬化', '甲状腺结节', '乳腺增生', '胆囊炎', '子宫肌瘤']
   },
   ecg: {
@@ -389,6 +398,53 @@ const EXAMINATION_TYPES = {
     searchableDiseases: ['冠心病', '心绞痛', '心肌梗死', '动脉粥样硬化', '胸痛']
   },
 
+  // ========== 高级影像学检查 ==========
+  petCT: {
+    id: 'pet_ct',
+    name: 'PET-CT',
+    category: '影像学检查',
+    price: 7000,
+    description: '正电子发射计算机断层扫描',
+    bodyParts: ['全身', '头部', '胸部', '腹部', '盆腔'],
+    searchableDiseases: ['肿瘤', '淋巴瘤', '肺癌', '肝癌', '结直肠癌', '乳腺癌', '转移瘤', '阿尔茨海默病', '癫痫']
+  },
+  enhancedMRI: {
+    id: 'enhanced_mri',
+    name: '增强MRI',
+    category: '影像学检查',
+    price: 900,
+    description: '增强磁共振成像（注射造影剂）',
+    bodyParts: ['头部', '脊柱', '腹部', '肝脏', '肾脏', '胰腺', '乳腺', '前列腺', '子宫', '卵巢', '膀胱', '心脏', '颅脑', '垂体', '眼眶', '内耳'],
+    searchableDiseases: ['脑肿瘤', '脑膜瘤', '垂体瘤', '肝癌', '肾癌', '乳腺癌', '前列腺癌', '脊髓病变']
+  },
+  mra: {
+    id: 'mra',
+    name: '磁共振血管成像',
+    category: '影像学检查',
+    price: 800,
+    description: '磁共振血管成像（MRA）',
+    bodyParts: ['颅脑', '颈部', '胸部', '腹部', '下肢', '肾动脉', '门静脉'],
+    searchableDiseases: ['动脉瘤', '血管畸形', '动脉狭窄', '静脉血栓', '烟雾病', '动脉夹层']
+  },
+  cta: {
+    id: 'cta',
+    name: 'CT血管造影',
+    category: '影像学检查',
+    price: 1000,
+    description: 'CT血管造影（CTA）',
+    bodyParts: ['颅脑', '颈部', '胸部', '腹部', '下肢', '肾动脉', '肺动脉', '主动脉'],
+    searchableDiseases: ['肺栓塞', '主动脉夹层', '动脉瘤', '动脉狭窄', '深静脉血栓', '血管畸形']
+  },
+  virtualEndoscopy: {
+    id: 'virtual_endoscopy',
+    name: '虚拟内镜',
+    category: '影像学检查',
+    price: 500,
+    description: 'CT虚拟内镜检查',
+    bodyParts: ['结肠', '支气管', '胃'],
+    searchableDiseases: ['结肠息肉', '结直肠癌', '肺癌', '支气管狭窄', '胃癌']
+  },
+
   // ========== 神经系统检查 ==========
   eeg: {
     id: 'eeg',
@@ -413,6 +469,23 @@ const EXAMINATION_TYPES = {
     price: 300,
     description: '腰椎穿刺脑脊液检查',
     searchableDiseases: ['脑膜炎', '脑炎', '蛛网膜下腔出血', '多发性硬化', '格林巴利']
+  },
+  dsa: {
+    id: 'dsa',
+    name: '数字减影血管造影',
+    category: '特殊检查',
+    price: 3000,
+    description: '数字减影血管造影（DSA）',
+    bodyParts: ['颅脑', '颈部', '心脏', '腹部', '下肢', '肾脏'],
+    searchableDiseases: ['动脉瘤', '脑血管畸形', '动脉狭窄', '动静脉瘘', '血管畸形', '布加综合征']
+  },
+  boneScan: {
+    id: 'bone_scan',
+    name: '骨扫描',
+    category: '影像学检查',
+    price: 800,
+    description: '全身骨显像（ECT）',
+    searchableDiseases: ['骨转移瘤', '骨肿瘤', '骨折', '骨髓炎', '股骨头坏死', '代谢性骨病']
   },
 
   // ========== 呼吸系统检查 ==========
@@ -467,6 +540,40 @@ const EXAMINATION_TYPES = {
     price: 350,
     description: '尿动力学检查',
     searchableDiseases: ['尿失禁', '神经源性膀胱', '前列腺增生', '膀胱过度活动', '排尿困难']
+  },
+
+  // ========== 专科彩超 ==========
+  thyroidUltrasound: {
+    id: 'thyroid_ultrasound',
+    name: '甲状腺彩超',
+    category: '影像学检查',
+    price: 120,
+    description: '甲状腺超声检查',
+    searchableDiseases: ['甲状腺结节', '甲状腺癌', '甲状腺炎', '甲亢', '甲减', '甲状腺囊肿']
+  },
+  breastUltrasound: {
+    id: 'breast_ultrasound',
+    name: '乳腺彩超',
+    category: '影像学检查',
+    price: 120,
+    description: '乳腺超声检查',
+    searchableDiseases: ['乳腺增生', '乳腺结节', '乳腺癌', '乳腺纤维瘤', '乳腺囊肿', '乳腺炎']
+  },
+  carotidUltrasound: {
+    id: 'carotid_ultrasound',
+    name: '颈动脉彩超',
+    category: '影像学检查',
+    price: 150,
+    description: '颈动脉超声检查',
+    searchableDiseases: ['颈动脉狭窄', '颈动脉斑块', '动脉粥样硬化', '脑梗死', '短暂性脑缺血']
+  },
+  abdominalUltrasound: {
+    id: 'abdominal_ultrasound',
+    name: '腹部彩超',
+    category: '影像学检查',
+    price: 120,
+    description: '腹部脏器超声检查',
+    searchableDiseases: ['脂肪肝', '肝硬化', '肝囊肿', '胆结石', '胆囊炎', '胰腺炎', '脾大', '肾结石']
   },
 
   // ========== 骨科检查 ==========

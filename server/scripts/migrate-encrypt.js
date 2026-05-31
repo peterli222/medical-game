@@ -6,7 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const SETTINGS_FILE = path.join(__dirname, '../data/ai-settings.json');
-const ENCRYPTION_KEY = process.env.MEDICAL_APP_SECRET || crypto.createHash('sha256').update('medical-game-2024-secure-key').digest();
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(process.env.MEDICAL_APP_SECRET || 'medical-game-2024-secure-key').digest();
 const ALGORITHM = 'aes-256-cbc';
 
 function encrypt(text) {

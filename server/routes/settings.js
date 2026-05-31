@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const SETTINGS_FILE = path.join(__dirname, '../data/ai-settings.json');
 
 // 加密密钥 - 从环境变量或生成固定密钥
-const ENCRYPTION_KEY = process.env.MEDICAL_APP_SECRET || crypto.createHash('sha256').update('medical-game-2024-secure-key').digest();
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(process.env.MEDICAL_APP_SECRET || 'medical-game-2024-secure-key').digest();
 const ALGORITHM = 'aes-256-cbc';
 
 // Default settings - 优先从环境变量读取
@@ -21,6 +21,26 @@ const DEFAULT_SETTINGS = {
   generateExaminations: process.env.AI_GENERATE_EXAMINATIONS !== 'false',
   aiScoring: process.env.AI_SCORING !== 'false'
 };
+
+// 预设API网关列表
+const API_PRESETS = [
+  {
+    id: 'xinjianya',
+    name: '新剑雅网关',
+    apiUrl: 'https://new.xinjianya.top/v1/chat/completions',
+    apiKey: 'sk-DqjWMhaVbsSb8L1Jlxs6ssTwpKQfKS6VWwSUlkkVVictV16z',
+    model: 'glm-5.1',
+    description: '默认网关，GLM-5.1中文效果好'
+  },
+  {
+    id: 'local-proxy',
+    name: '本地代理',
+    apiUrl: 'http://117.72.172.112:3000/v1/chat/completions',
+    apiKey: 'dsr_l1gDqt2SQ_JOXXw6JYvWwnjSyCG1YW4j',
+    model: 'deepseek-chat-fast',
+    description: '本地DeepSeek代理'
+  }
+];
 
 // Ensure data directory exists
 function ensureDataDir() {
@@ -108,19 +128,52 @@ router.get('/', (req, res) => {
     success: true,
     data: {
       ...settings,
-      apiKey: maskApiKey(settings.apiKey)
+      apiKey: maskApiKey(settings.apiKey),
+      // 添加当前使用的预设ID（如果匹配）
+      currentPreset: API_PRESETS.find(p => settings.apiUrl && settings.apiUrl.includes(new URL(p.apiUrl).hostname))?.id || 'custom'
     }
   });
 });
 
+// GET /api/settings/presets - 获取预设API网关列表
+router.get('/presets', (req, res) => {
+  const settings = readSettings();
+  const currentHostname = settings.apiUrl ? new URL(settings.apiUrl).hostname : '';
+  
+  const presets = API_PRESETS.map(p => ({
+    ...p,
+    isCurrent: currentHostname && p.apiUrl.includes(currentHostname)
+  }));
+  
+  res.json({ success: true, data: presets });
+});
+
 // POST /api/settings - Update settings
 router.post('/', (req, res) => {
-  const { apiUrl, apiKey, model, enabled, generateCases, generateDescriptions, generateExaminations, aiScoring } = req.body;
+  const { apiUrl, apiKey, model, enabled, generateCases, generateDescriptions, generateExaminations, aiScoring, presetId } = req.body;
   const current = readSettings();
   
-  // 判断 apiKey 是否是遮罩格式（***xxxx），如果是则保留原值
+  // 如果指定了预设ID，使用预设的apiUrl、apiKey和model
+  let newApiUrl = current.apiUrl;
   let newApiKey = current.apiKey;
-  if (apiKey !== undefined) {
+  let newModel = current.model;
+  if (presetId) {
+    const preset = API_PRESETS.find(p => p.id === presetId);
+    if (preset) {
+      newApiUrl = preset.apiUrl;
+      if (preset.apiKey) {
+        newApiKey = preset.apiKey;
+      }
+      if (preset.model) {
+        newModel = preset.model;
+      }
+    }
+  } else if (apiUrl !== undefined) {
+    newApiUrl = apiUrl.trim();
+  }
+  
+  // 判断 apiKey 是否是遮罩格式（***xxxx），如果是则保留原值
+  if (apiKey !== undefined && !presetId) {
     const maskedPattern = /^\*{3}/;
     if (!maskedPattern.test(apiKey)) {
       newApiKey = apiKey.trim();
@@ -129,9 +182,9 @@ router.post('/', (req, res) => {
   
   const updated = {
     ...current,
-    ...(apiUrl !== undefined && { apiUrl: apiUrl.trim() }),
+    apiUrl: newApiUrl,
     apiKey: newApiKey,
-    ...(model !== undefined && { model: model.trim() }),
+    model: newModel,
     ...(enabled !== undefined && { enabled: !!enabled }),
     ...(generateCases !== undefined && { generateCases: !!generateCases }),
     ...(generateDescriptions !== undefined && { generateDescriptions: !!generateDescriptions }),
@@ -145,7 +198,8 @@ router.post('/', (req, res) => {
     message: '设置已保存', 
     data: { 
       ...updated, 
-      apiKey: maskApiKey(updated.apiKey) 
+      apiKey: maskApiKey(updated.apiKey),
+      currentPreset: API_PRESETS.find(p => updated.apiUrl && updated.apiUrl.includes(new URL(p.apiUrl).hostname))?.id || 'custom'
     } 
   });
 });

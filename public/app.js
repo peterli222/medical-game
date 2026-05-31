@@ -222,102 +222,7 @@ class ThinkingFilter {
     }
 }
 
-// ============================================================
-// API 限流器 — 每分钟最多10次请求，超出排队等待
-// ============================================================
-const apiRateLimiter = {
-    maxPerMinute: 10,
-    requests: [],       // 时间戳数组
-    queue: [],          // 排队中的 { resolve, reject, fn, label }
-    running: 0,         // 正在执行的请求数
-    barEl: null,        // 状态条DOM
 
-    // 初始化状态条
-    _ensureBar() {
-        if (this.barEl) return;
-        this.barEl = document.createElement('div');
-        this.barEl.id = 'rateLimitBar';
-        this.barEl.className = 'rate-limit-bar hidden';
-        document.body.appendChild(this.barEl);
-    },
-
-    _updateBar() {
-        this._ensureBar();
-        const now = Date.now();
-        // 清理过期记录
-        this.requests = this.requests.filter(t => now - t < 60000);
-        const used = this.requests.length;
-        const queued = this.queue.length;
-        const active = this.running;
-
-        if (queued === 0 && active === 0) {
-            this.barEl.classList.add('hidden');
-            return;
-        }
-
-        this.barEl.classList.remove('hidden');
-        if (queued > 0) {
-            const waitSec = Math.ceil(queued / this.maxPerMinute * 60 / this.maxPerMinute);
-            this.barEl.innerHTML = `⏳ 排队中：${queued} 个请求等待 | 已用 ${used}/${this.maxPerMinute} 次/分钟`;
-            this.barEl.className = 'rate-limit-bar queuing';
-        } else {
-            this.barEl.innerHTML = `🔄 执行中：${active} 个请求 | 已用 ${used}/${this.maxPerMinute} 次/分钟`;
-            this.barEl.className = 'rate-limit-bar active';
-        }
-    },
-
-    // 核心方法：包装一个异步函数，自动限流+排队
-    async execute(fn, label = 'AI请求') {
-        this._ensureBar();
-        const now = Date.now();
-        this.requests = this.requests.filter(t => now - t < 60000);
-
-        // 如果还有额度，直接执行
-        if (this.requests.length < this.maxPerMinute && this.running < this.maxPerMinute) {
-            return this._run(fn, label);
-        }
-
-        // 否则排队
-        this._updateBar();
-        return new Promise((resolve, reject) => {
-            this.queue.push({ resolve, reject, fn, label });
-            this._updateBar();
-            this._drainQueue();
-        });
-    },
-
-    async _run(fn, label) {
-        this.requests.push(Date.now());
-        this.running++;
-        this._updateBar();
-        try {
-            const result = await fn();
-            return result;
-        } finally {
-            this.running--;
-            this._updateBar();
-            setTimeout(() => this._drainQueue(), 500);
-        }
-    },
-
-    _drainQueue() {
-        if (this.queue.length === 0) return;
-        const now = Date.now();
-        this.requests = this.requests.filter(t => now - t < 60000);
-        if (this.requests.length >= this.maxPerMinute) {
-            // 还没腾出额度，等最早的过期
-            const oldest = this.requests[0];
-            const waitMs = 60000 - (now - oldest) + 100;
-            setTimeout(() => this._drainQueue(), Math.max(waitMs, 1000));
-            return;
-        }
-        // 取出一个排队请求执行
-        const item = this.queue.shift();
-        if (item) {
-            this._run(item.fn, item.label).then(item.resolve).catch(item.reject);
-        }
-    }
-};
 
 
 
@@ -384,14 +289,7 @@ const elements = {
     surgeryListContent: document.getElementById('surgeryListContent'),
     surgeryStatusFilter: document.getElementById('surgeryStatusFilter'),
     
-    // 住院
-    admissionDeptSelect: document.getElementById('admissionDeptSelect'),
-    admissionDiagnosis: document.getElementById('admissionDiagnosis'),
-    admissionTreatment: document.getElementById('admissionTreatment'),
-    admissionDoctor: document.getElementById('admissionDoctor'),
-    submitAdmissionBtn: document.getElementById('submitAdmissionBtn'),
-    aiAdmitBtn: document.getElementById('aiAdmitBtn'),
-    admissionListContent: document.getElementById('admissionListContent'),
+
     
     // 会诊
     consultationTypeSelect: document.getElementById('consultationTypeSelect'),
@@ -543,10 +441,7 @@ function setupEventListeners() {
         loadSurgeryDatabase();
     }
     
-    // 住院
-    if (elements.submitAdmissionBtn) elements.submitAdmissionBtn.addEventListener('click', submitAdmission);
-    if (elements.aiAdmitBtn) elements.aiAdmitBtn.addEventListener('click', aiAdmit);
-    loadDepartmentConfig();
+
     
     // 会诊
     if (elements.submitConsultationBtn) elements.submitConsultationBtn.addEventListener('click', submitConsultation);
@@ -570,13 +465,17 @@ function switchTab(tabName) {
         'prescription': 'prescriptionTab',
         'medical-record': 'medicalRecordTab',
         'surgery': 'surgeryTab',
-        'admission': 'admissionTab',
         'consultation-request': 'consultationRequestTab'
     };
     
     elements.tabContents.forEach(content => {
         content.classList.toggle('active', content.id === tabMap[tabName]);
     });
+
+    // 切换到会诊标签时加载已有检查结果
+    if (tabName === 'consultation-request') {
+        loadAttachedExams();
+    }
 }
 
 // 创建新患者
@@ -620,11 +519,11 @@ async function createNewPatient() {
         } catch (e) {}
 
         const department = document.getElementById('departmentSelect')?.value || '';
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/patients/new-stream`, {
+        const response = await fetch(`${API_BASE_URL}/patients/new-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ recentCases, department })
-        }), '生成患者(SSE)');
+        });
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -636,6 +535,7 @@ async function createNewPatient() {
         let streamError = null;
         let patientReceived = false;
         let initialDesc = '';
+        let caseContent = '';
 
         while (true) {
             const { done, value } = await reader.read();
@@ -650,8 +550,32 @@ async function createNewPatient() {
                     if (evt.type === 'status') {
                         const loadingSpan = elements.chatMessages.querySelector('.ai-generating span');
                         if (loadingSpan) loadingSpan.textContent = evt.message || evt.status || '处理中...';
-                    } else if (evt.type === 'patient') {
+                    } else if (evt.type === 'case-progress') {
+                        // 流式显示病例生成的 token
+                        caseContent = evt.full || (caseContent + (evt.token || ''));
+                        const streamEl = document.getElementById('case-streaming-content');
+                        if (streamEl) {
+                            streamEl.textContent = caseContent;
+                            streamEl.parentElement.scrollTop = streamEl.parentElement.scrollHeight;
+                        } else {
+                            // 首次收到 token，替换 spinner 为流式内容区
+                            const aiGen = elements.chatMessages.querySelector('.ai-generating');
+                            if (aiGen) {
+                                aiGen.innerHTML = `
+                                    <div id="case-streaming-content" style="text-align:left; white-space:pre-wrap; word-break:break-all; font-size:13px; color:#555; max-height:400px; overflow-y:auto; padding:12px; background:#f9f9f9; border-radius:8px; font-family:monospace;">${caseContent}</div>
+                                `;
+                            }
+                        }
+                    } else if (evt.type === 'ai-failed') {
+                        // AI 失败，记录错误信息
+                        streamError = new Error(evt.message || 'AI调用失败');
+                        streamError._stage = evt.stage || 'unknown';
+                    } else if (evt.type === 'patient' && !streamError) {
                         currentPatient = evt.data || evt.patient;
+                        // 保存病例数据（包含disease字段）
+                        if (evt.case) {
+                            currentPatient._case = evt.case;
+                        }
                         patientReceived = true;
                         renderPatientInfo();
                         speechService.callPatient(currentPatient.name);
@@ -661,6 +585,7 @@ async function createNewPatient() {
                         currentExaminations = [];
                         renderPrescriptionItems();
                         renderExaminationList();
+                        loadAttachedExams();
                         createNewRecordFromPatient();
                         // 为流式描述创建占位元素
                         elements.chatMessages.innerHTML = `
@@ -715,6 +640,7 @@ async function createNewPatient() {
                     currentExaminations = [];
                     renderPrescriptionItems();
                     renderExaminationList();
+                    loadAttachedExams();
                     createNewRecordFromPatient();
                     elements.newPatientBtn.disabled = false;
                     elements.newPatientBtn.innerHTML = '<span>👤</span> 新患者';
@@ -723,15 +649,25 @@ async function createNewPatient() {
             } catch (e) {}
         }
     } catch (error) {
-        console.log('后端不可用，使用本地模式', error);
-        // 显示错误提示
+        const errorMsg = error.message || '未知错误';
+        const stage = error._stage || '';
+        const stageText = stage === 'case' ? '（病例生成阶段）' : stage === 'parse' ? '（数据解析阶段）' : stage === 'config' ? '（配置问题）' : '';
         elements.chatMessages.innerHTML = `
             <div class="chat-message system">
-                <div class="message-content" style="text-align: center; color: var(--danger-color); padding: 20px;">
-                    <p>⚠️ AI生成失败：${error.message || '请求超时'}</p>
-                    <p style="margin-top: 8px; color: var(--text-secondary); font-size: 13px;">
-                        将使用本地模式
+                <div class="message-content" style="text-align: center; padding: 30px 20px;">
+                    <div style="font-size: 40px; margin-bottom: 12px;">❌</div>
+                    <p style="color: var(--danger-color); font-size: 15px; font-weight: 600; margin-bottom: 8px;">
+                        AI 生成失败 ${stageText}
                     </p>
+                    <div style="background: #fff3f3; border: 1px solid #fdd; border-radius: 8px; padding: 12px 16px; margin: 12px auto; max-width: 500px; text-align: left; font-size: 13px; color: #c00; font-family: monospace; word-break: break-all;">
+                        ${errorMsg}
+                    </div>
+                    <button onclick="createNewPatient()" style="margin-top: 16px; padding: 10px 28px; background: var(--primary-color); color: #fff; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 600;">
+                        🔄 重新生成
+                    </button>
+                    <button onclick="createNewPatientLocal(); this.parentElement.parentElement.parentElement.innerHTML=''" style="margin-top: 16px; margin-left: 10px; padding: 10px 28px; background: #f0f0f0; color: #666; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">
+                        📋 使用本地模式
+                    </button>
                 </div>
             </div>
         `;
@@ -740,9 +676,6 @@ async function createNewPatient() {
     // 恢复按钮
     elements.newPatientBtn.disabled = false;
     elements.newPatientBtn.innerHTML = '<span>👤</span> 新患者';
-    
-    // 延迟一下再切换到本地模式
-    setTimeout(() => createNewPatientLocal(), 1500);
 }
 
 function createNewPatientLocal() {
@@ -765,6 +698,7 @@ function createNewPatientLocal() {
     renderInitialMessage(initialMessage);
     enableControls();
     saveRecentCase(currentPatient.symptoms);
+    loadAttachedExams();
     
     currentPrescription = [];
     currentExaminations = []; // 重置检查单
@@ -1283,37 +1217,48 @@ function renderInitialMessage(message) {
 }
 
 // 发送消息
-async function sendMessage() {
-    const message = elements.chatInput.value.trim();
+let _lastChatMessage = '';
+
+async function sendMessage(retryMsg) {
+    const message = retryMsg || elements.chatInput.value.trim();
     if (!message || !currentPatient) return;
+    _lastChatMessage = message;
     
-    elements.chatMessages.innerHTML += `
-        <div class="chat-message doctor">
-            <div class="message-avatar">👨‍⚕️</div>
-            <div class="message-content">${message}</div>
-        </div>
-    `;
+    if (!retryMsg) {
+        elements.chatMessages.innerHTML += `
+            <div class="chat-message doctor">
+                <div class="message-avatar">👨‍⚕️</div>
+                <div class="message-content">${message}</div>
+            </div>
+        `;
+    }
     
     elements.chatInput.value = '';
     elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
     
     try {
-        // 先插入AI回复占位元素
+        // 先插入AI回复占位元素（带加载动画）
         const replyDiv = document.createElement('div');
         replyDiv.className = 'chat-message patient';
         replyDiv.innerHTML = `
             <div class="message-avatar">👤</div>
-            <div class="message-content" style="min-height: 20px;"></div>
+            <div class="message-content" style="min-height: 20px;">
+                <div class="ai-thinking" style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px;">
+                    <div class="spinner" style="width: 16px; height: 16px; border: 2px solid var(--border-color); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                    <span>患者正在思考...</span>
+                </div>
+            </div>
         `;
         elements.chatMessages.appendChild(replyDiv);
         const replyContentEl = replyDiv.querySelector('.message-content');
+        const thinkingEl = replyDiv.querySelector('.ai-thinking');
         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/patients/${currentPatient.id}/chat-stream`, {
+        const response = await fetch(`${API_BASE_URL}/patients/${currentPatient.id}/chat-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ question: message })
-        }), '问诊对话(SSE)');
+        });
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -1338,6 +1283,10 @@ async function sendMessage() {
                 try {
                     const evt = JSON.parse(line.slice(6));
                     if (evt.type === 'token') {
+                        // 收到第一个token时隐藏加载动画
+                        if (thinkingEl && thinkingEl.style.display !== 'none') {
+                            thinkingEl.style.display = 'none';
+                        }
                         streamReply += (evt.text || evt.content || evt.token || '');
                         replyContentEl.innerHTML = streamReply.replace(/\n/g, '<br>');
                         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
@@ -1365,15 +1314,31 @@ async function sendMessage() {
         }
         return;
     } catch (e) {
-        console.log('使用本地回复', e);
+        console.log('对话失败:', e);
         // 移除可能残留的空占位元素
         const emptyReply = elements.chatMessages.querySelector('.chat-message.patient:last-child .message-content');
         if (emptyReply && !emptyReply.textContent.trim()) {
             emptyReply.parentElement.remove();
         }
+        // 显示错误信息和重试按钮
+        const is404 = (e.message || '').includes('404');
+        const errorMsg = is404 
+            ? '患者数据已过期（可能服务器重启了），请点击「新患者」重新开始' 
+            : `❌ AI 回复失败：${e.message || '未知错误'}`;
+        const buttons = is404
+            ? `<button onclick="this.closest('.chat-message.system').remove(); createNewPatient()" style="margin-left: 12px; padding: 4px 14px; background: var(--primary-color); color: #fff; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">👤 新患者</button>`
+            : `<button onclick="this.closest('.chat-message.system').remove(); sendMessage(_lastChatMessage)" style="margin-left: 12px; padding: 4px 14px; background: var(--primary-color); color: #fff; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">🔄 重试</button>`;
+        elements.chatMessages.innerHTML += `
+            <div class="chat-message system">
+                <div class="message-content" style="text-align: center; padding: 16px;">
+                    <span style="color: var(--danger-color); font-size: 13px;">${errorMsg}</span>
+                    ${buttons}
+                </div>
+            </div>
+        `;
+        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        return;
     }
-    
-    renderPatientReply('好的医生，我明白了。还有其他问题吗？');
 }
 
 function renderPatientReply(reply) {
@@ -1746,10 +1711,10 @@ async function showExamResult(id) {
         const examOrderId = createData.data.id;
         
         // 使用流式API获取检查结果
-        const streamResponse = await apiRateLimiter.execute(() => fetchWithTimeout(`${API_BASE_URL}/examinations/${examOrderId}/execute-stream`, {
+        const streamResponse = await fetchWithTimeout(`${API_BASE_URL}/examinations/${examOrderId}/execute-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
-        }, 180000), '检查执行');
+        }, 180000);
         
         if (!streamResponse.ok) {
             throw new Error('执行检查失败');
@@ -2498,7 +2463,7 @@ async function endConsultation() {
             price: e.price || 50,
             resultDescription: (e.result && e.result.aiDescription) || (e.result && e.result.description) || ''
         }));
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/patients/${currentPatient.id}/evaluate-stream`, {
+        const response = await fetch(`${API_BASE_URL}/patients/${currentPatient.id}/evaluate-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2510,7 +2475,7 @@ async function endConsultation() {
                 userExaminations: currentExaminations.map(e => e.typeName || e.type),
                 examinationDetails: examDetails
             })
-        }), 'AI评分(SSE)');
+        });
 
         if (!response.ok) throw new Error('HTTP ' + response.status);
 
@@ -2778,6 +2743,125 @@ function resetGame() {
     }
 }
 
+// 重新评分当前病历
+async function rescoreCurrentRecord() {
+    if (!currentRecordId) {
+        alert('没有加载的病历！');
+        return;
+    }
+    
+    const record = medicalRecords.find(r => r.id === currentRecordId);
+    if (!record) {
+        alert('病历数据不存在！');
+        return;
+    }
+    
+    // 检查是否有患者ID（需要患者ID才能评分）
+    if (!record.patientId) {
+        alert('该病历没有关联的患者ID，无法重新评分。');
+        return;
+    }
+    
+    const rescoreBtn = document.getElementById('rescoreBtn');
+    if (rescoreBtn) {
+        rescoreBtn.disabled = true;
+        rescoreBtn.textContent = '评分中...';
+    }
+    
+    try {
+        // 获取诊断和费用信息
+        const userDiagnosis = record.diagnosis || '';
+        const examCost = record.examCost || 0;
+        const medCost = record.medCost || 0;
+        const questionCount = record.questionCount || 0;
+        
+        // 调用评分API
+        const response = await fetch(`${API_BASE_URL}/patients/${record.patientId}/evaluate-stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userDiagnosis,
+                examinationCosts: examCost,
+                prescriptionCosts: medCost,
+                questionCount,
+                userMedicines: record.medicines || [],
+                userExaminations: record.examinations || [],
+                examinationDetails: record.examinationDetails || []
+            })
+        });
+        
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        
+        // SSE 流式读取
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let resultData = null;
+        let streamError = null;
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const evt = JSON.parse(line.slice(6));
+                    if (evt.type === 'result') {
+                        if (evt.data) {
+                            resultData = evt.data;
+                        } else if (evt.result) {
+                            resultData = evt.result;
+                        } else {
+                            const { type, ...rest } = evt;
+                            resultData = rest;
+                        }
+                    } else if (evt.type === 'error') {
+                        streamError = new Error(evt.message || '评分失败');
+                    }
+                } catch (e) { /* ignore parse errors */ }
+            }
+        }
+        
+        if (streamError) throw streamError;
+        
+        if (resultData) {
+            // 更新病历评分信息
+            record.score = resultData.score || 0;
+            record.grade = resultData.grade || '?';
+            record.gradeColor = resultData.gradeColor || '#333';
+            record.scoreBreakdown = resultData.scoreBreakdown || null;
+            record.correctDiagnosis = resultData.correctDiagnosis || '';
+            record.aiScored = resultData.aiScored || false;
+            record.overallComment = resultData.overallComment || '';
+            record.costs = resultData.costs || null;
+            record.matchType = resultData.matchType || '';
+            record.diagnosisMatch = resultData.diagnosisMatch || false;
+            
+            // 保存到本地存储
+            saveLocalRecords();
+            
+            // 更新界面显示
+            loadRecordToForm(record);
+            renderRecordList();
+            
+            alert('重新评分完成！');
+        } else {
+            alert('评分失败：没有收到评分结果。');
+        }
+    } catch (error) {
+        console.error('重新评分错误:', error);
+        alert('重新评分失败：' + error.message);
+    } finally {
+        if (rescoreBtn) {
+            rescoreBtn.disabled = false;
+            rescoreBtn.textContent = '🔄 重新评分';
+        }
+    }
+}
+
 // 初始化
 init();
 
@@ -2941,10 +3025,15 @@ async function submitSurgery() {
 }
 
 async function aiArrangeSurgery() {
-    // 获取最新创建的手术或列表中第一个pending的手术
+    if (!currentPatient) {
+        alert('请先创建患者');
+        return;
+    }
+
+    // 获取当前患者的手术列表
     let surgeries = [];
     try {
-        const resp = await fetch(`${API_BASE_URL}/surgeries`);
+        const resp = await fetch(`${API_BASE_URL}/surgeries?patientId=${currentPatient.id}`);
         if (resp.ok) {
             const data = await resp.json();
             if (data.success) surgeries = data.data || [];
@@ -2953,7 +3042,7 @@ async function aiArrangeSurgery() {
 
     const target = surgeries.find(s => s.status === 'pending') || surgeries[0];
     if (!target) {
-        alert('没有可安排的手术，请先创建手术申请');
+        alert('当前患者没有可安排的手术，请先创建手术申请');
         return;
     }
 
@@ -2964,10 +3053,10 @@ async function aiArrangeSurgery() {
     }
 
     try {
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/surgeries/${target.id}/ai-arrange`, {
+        const response = await fetch(`${API_BASE_URL}/surgeries/${target.id}/ai-arrange`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
-        }), '手术安排');
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -3034,8 +3123,12 @@ async function aiArrangeSurgery() {
 
 async function renderSurgeryList() {
     if (!elements.surgeryListContent) return;
+    if (!currentPatient) {
+        elements.surgeryListContent.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">请先创建患者</div>';
+        return;
+    }
     try {
-        const response = await fetch(`${API_BASE_URL}/surgeries`);
+        const response = await fetch(`${API_BASE_URL}/surgeries?patientId=${currentPatient.id}`);
         if (!response.ok) return;
         const data = await response.json();
         if (!data.success) return;
@@ -3181,382 +3274,70 @@ function getRiskLevelLabel(level) {
 }
 
 // ============================================================
-// 住院模块
+// 会诊模块
 // ============================================================
-let departmentConfig = {};
 
-async function loadDepartmentConfig() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/admissions/departments`);
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                departmentConfig = data.data || {};
-                populateAdmissionDeptSelect();
-            }
-        }
-    } catch (err) {
-        console.error('加载科室配置失败:', err);
-    }
-    renderAdmissionList();
-}
+// 加载患者已完成的检查结果供勾选
+async function loadAttachedExams() {
+    const container = document.getElementById('attachedExamsList');
+    if (!container) return;
 
-function populateAdmissionDeptSelect() {
-    if (!elements.admissionDeptSelect) return;
-    elements.admissionDeptSelect.innerHTML = '<option value="">-- 请选择科室 --</option>';
-    Object.keys(departmentConfig).forEach(dept => {
-        const opt = document.createElement('option');
-        opt.value = dept;
-        const cfg = departmentConfig[dept];
-        opt.textContent = `${dept} (${cfg.floor}楼, ${cfg.beds}床)`;
-        elements.admissionDeptSelect.appendChild(opt);
-    });
-}
-
-async function submitAdmission() {
     if (!currentPatient) {
-        alert('请先创建患者');
+        container.innerHTML = '<div style="text-align:center; color:#999; padding:12px;">请先创建患者并完成检查</div>';
         return;
-    }
-    const department = elements.admissionDeptSelect ? elements.admissionDeptSelect.value : '';
-    if (!department) {
-        alert('请选择住院科室');
-        return;
-    }
-    const diagnosis = elements.admissionDiagnosis ? elements.admissionDiagnosis.value : '';
-    const treatmentPlan = elements.admissionTreatment ? elements.admissionTreatment.value : '';
-    const attendingDoctor = elements.admissionDoctor ? elements.admissionDoctor.value : '';
-
-    // 分配床位
-    const deptCfg = departmentConfig[department];
-    const totalBeds = deptCfg ? deptCfg.beds : 20;
-    const bedNumber = `${department}-${Math.floor(Math.random() * totalBeds) + 1}`;
-
-    const body = {
-        patientId: currentPatient.id,
-        patientName: currentPatient.name,
-        department: department,
-        bedNumber: bedNumber,
-        diagnosis: diagnosis,
-        treatmentPlan: treatmentPlan,
-        attendingDoctor: attendingDoctor,
-        status: 'admitted'
-    };
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/admissions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                alert(`住院办理成功！床号: ${bedNumber}`);
-                renderAdmissionList();
-                if (elements.admissionDiagnosis) elements.admissionDiagnosis.value = '';
-                if (elements.admissionTreatment) elements.admissionTreatment.value = '';
-                if (elements.admissionDoctor) elements.admissionDoctor.value = '';
-            } else {
-                alert('办理失败: ' + (data.message || '未知错误'));
-            }
-        } else {
-            alert('住院办理失败');
-        }
-    } catch (err) {
-        console.error('住院办理失败:', err);
-        alert('住院办理失败: ' + err.message);
-    }
-}
-
-async function aiAdmit() {
-    if (!currentPatient) {
-        alert('请先创建患者');
-        return;
-    }
-
-    const btn = elements.aiAdmitBtn;
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'AI收治中...';
     }
 
     try {
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/admissions/ai-admit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ patientId: currentPatient.id })
-        }), '住院收治');
-
+        const response = await fetch(`${API_BASE_URL}/examinations/patient/${currentPatient.id}`);
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            container.innerHTML = '<div style="text-align:center; color:#999; padding:12px;">加载检查结果失败</div>';
+            return;
         }
-
-        const thinkFilter = new ThinkingFilter();
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        let eventType = '';
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (const rawLine of lines) {
-                // admissions SSE 格式: event: xxx\ndata: xxx
-                if (rawLine.startsWith('event: ')) {
-                    eventType = rawLine.slice(7).trim();
-                    continue;
-                }
-                if (!rawLine.startsWith('data: ')) continue;
-                const jsonStr = rawLine.slice(6).trim();
-                if (!jsonStr) continue;
-                try {
-                    const evt = JSON.parse(jsonStr);
-                    if (eventType === 'progress') {
-                        console.log('[住院AI]', evt.message || '');
-                    } else if (eventType === 'result') {
-                        const rec = evt.recommendation || {};
-                        // 填充住院表单
-                        if (elements.admissionDeptSelect) elements.admissionDeptSelect.value = rec.department || '';
-                        if (elements.admissionDiagnosis) elements.admissionDiagnosis.value = rec.admissionDiagnosis || '';
-                        if (elements.admissionTreatment) elements.admissionTreatment.value = rec.treatmentPlan || '';
-                        if (elements.admissionDoctor) elements.admissionDoctor.value = rec.attendingDoctor || '';
-                        renderAdmissionList();
-                    } else if (eventType === 'done') {
-                        console.log('[住院AI] 完成');
-                    } else if (eventType === 'error') {
-                        alert('AI收治失败: ' + (evt.message || '未知错误'));
-                    }
-                } catch (parseErr) {
-                    // 忽略
-                }
-            }
-        }
-    } catch (err) {
-        console.error('AI收治失败:', err);
-        alert('AI收治失败: ' + err.message);
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '🤖 AI一键收治';
-        }
-    }
-}
-
-async function renderAdmissionList() {
-    if (!elements.admissionListContent) return;
-    try {
-        const response = await fetch(`${API_BASE_URL}/admissions`);
-        if (!response.ok) return;
         const data = await response.json();
-        if (!data.success) return;
-
-        const admissions = data.data || [];
-
-        if (admissions.length === 0) {
-            elements.admissionListContent.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">暂无住院记录</div>';
+        if (!data.success) {
+            container.innerHTML = '<div style="text-align:center; color:#999; padding:12px;">加载检查结果失败</div>';
             return;
         }
 
-        const admissionStatusMap = { 'admitted': '在院', 'transferred': '已转科', 'discharged': '已出院', 'absconded': '自动出院' };
-        const admissionStatusColor = { 'admitted': '#5cb85c', 'transferred': '#5bc0de', 'discharged': '#999', 'absconded': '#d9534f' };
+        const orders = (data.data || []).filter(o => o.status === 'completed');
+        if (orders.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#999; padding:12px;">暂无已完成的检查结果</div>';
+            return;
+        }
 
-        elements.admissionListContent.innerHTML = admissions.map(a => `
-            <div class="admission-item" style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; margin-bottom:8px; background:#fff;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <strong>${a.patientName || '未知患者'}</strong>
-                    <span class="status-badge" style="background:${admissionStatusColor[a.status] || '#999'}; color:#fff; padding:2px 8px; border-radius:4px; font-size:12px;">
-                        ${admissionStatusMap[a.status] || a.status}
-                    </span>
-                </div>
-                <div style="color:#666; font-size:13px; margin-top:4px;">
-                    科室: ${a.department || '-'} | 床号: ${a.bedNumber || '-'} | 主治: ${a.attendingDoctor || '-'}
-                </div>
-                ${a.diagnosis ? `<div style="color:#666; font-size:13px;">诊断: ${a.diagnosis}</div>` : ''}
-                <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="btn btn-sm btn-outline" onclick="showDailyRecordModal('${a.id}')">病程记录</button>
-                    ${a.status === 'admitted' || a.status === 'transferred' ? `
-                        <button class="btn btn-sm btn-primary" onclick="transferDepartment('${a.id}')">转科</button>
-                        <button class="btn btn-sm btn-success" onclick="dischargePatient('${a.id}')">出院</button>
-                    ` : ''}
-                </div>
-            </div>
-        `).join('');
-    } catch (err) {
-        console.error('渲染住院列表失败:', err);
-    }
-}
-
-function showDailyRecordModal(id) {
-    fetch(`${API_BASE_URL}/admissions/${id}`)
-        .then(r => r.json())
-        .then(data => {
-            if (!data.success) return;
-            const a = data.data;
-            const records = a.dailyRecords || [];
-            let html = `<h3>${a.patientName} - 病程记录</h3>`;
-            html += `<p style="color:#666;">科室: ${a.department} | 床号: ${a.bedNumber} | 入院日期: ${a.admissionDate ? new Date(a.admissionDate).toLocaleDateString('zh-CN') : '-'}</p>`;
-
-            if (records.length > 0) {
-                html += '<div style="margin:12px 0;">';
-                records.forEach((r, i) => {
-                    html += `
-                        <div style="border:1px solid #e8e8e8; border-radius:6px; padding:10px; margin-bottom:8px; background:#fafafa;">
-                            <div style="font-size:12px; color:#999;">第${i + 1}天 | ${r.date || '-'} | ${r.doctor || '-'}</div>
-                            <div style="margin-top:4px; white-space:pre-wrap;">${r.content || '-'}</div>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-            } else {
-                html += '<p style="color:#999;">暂无病程记录</p>';
-            }
-
-            html += `
-                <hr>
-                <h4>添加病程记录</h4>
-                <textarea id="dailyRecordInput" rows="4" style="width:100%; border:1px solid #ddd; border-radius:6px; padding:8px;" placeholder="请输入病程记录内容..."></textarea>
-                <div style="margin-top:8px; display:flex; gap:8px;">
-                    <button class="btn btn-primary" onclick="addDailyRecord('${id}')">提交记录</button>
-                    <button class="btn btn-outline" onclick="aiDailyTracking('${id}')">🤖 AI生成</button>
-                </div>
+        container.innerHTML = orders.map(o => {
+            const resultDesc = o.result && o.result.description ? o.result.description : '无详细结果';
+            const aiDesc = o.result && o.result.aiDescription ? o.result.aiDescription : '';
+            const shortDesc = aiDesc ? aiDesc.substring(0, 80) + (aiDesc.length > 80 ? '...' : '') : resultDesc.substring(0, 60);
+            // 存储完整报告内容（AI报告优先，否则用本地报告）
+            const fullReport = aiDesc || resultDesc;
+            const fullReportEscaped = fullReport.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `
+                <label style="display:flex; align-items:flex-start; gap:8px; padding:6px 4px; border-bottom:1px solid #eee; cursor:pointer; font-size:13px;">
+                    <input type="checkbox" value="${o.id}" class="attached-exam-checkbox" data-name="${o.examinationName || '未知检查'}" data-full-report="${fullReportEscaped}" style="margin-top:2px; flex-shrink:0;">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:600; color:#333;">${o.examinationName || '未知检查'}</div>
+                        <div style="color:#666; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${shortDesc}</div>
+                    </div>
+                </label>
             `;
-            showModal('病程记录', html);
-        })
-        .catch(err => {
-            console.error('获取病程记录失败:', err);
-            alert('获取病程记录失败');
-        });
-}
-window.showDailyRecordModal = showDailyRecordModal;
-
-async function addDailyRecord(id) {
-    const input = document.getElementById('dailyRecordInput');
-    const content = input ? input.value.trim() : '';
-    if (!content) {
-        alert('请输入病程记录内容');
-        return;
-    }
-    try {
-        const response = await fetch(`${API_BASE_URL}/admissions/${id}/daily-record`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content, doctor: '当前医生' })
-        });
-        if (response.ok) {
-            alert('病程记录添加成功');
-            showDailyRecordModal(id); // 刷新
-        } else {
-            alert('添加失败');
-        }
+        }).join('');
     } catch (err) {
-        alert('添加失败: ' + err.message);
+        console.error('加载检查结果失败:', err);
+        container.innerHTML = '<div style="text-align:center; color:#999; padding:12px;">加载失败</div>';
     }
 }
-window.addDailyRecord = addDailyRecord;
 
-async function aiDailyTracking(id) {
-    try {
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/admissions/${id}/ai-daily-tracking`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        }), '每日追踪');
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const thinkFilter = new ThinkingFilter();
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (const rawLine of lines) {
-                let eventType = '';
-                let jsonStr = '';
-                if (rawLine.startsWith('event: ')) {
-                    eventType = rawLine.slice(7).trim();
-                } else if (rawLine.startsWith('data: ')) {
-                    jsonStr = rawLine.slice(6).trim();
-                }
-                if (!jsonStr) continue;
-                try {
-                    const evt = JSON.parse(jsonStr);
-                    if (eventType === 'result') {
-                        const input = document.getElementById('dailyRecordInput');
-                        if (input && evt.record) {
-                            input.value = evt.record.content || '';
-                        }
-                    } else if (eventType === 'done') {
-                        alert('AI病程记录生成完成');
-                    } else if (eventType === 'error') {
-                        alert('AI生成失败: ' + (evt.message || '未知错误'));
-                    }
-                } catch (parseErr) {}
-            }
-        }
-    } catch (err) {
-        console.error('AI病程追踪失败:', err);
-        alert('AI病程追踪失败: ' + err.message);
-    }
+// 获取已勾选的检查结果详情（用于提交和AI上下文）
+function getSelectedExams() {
+    const checkboxes = document.querySelectorAll('.attached-exam-checkbox:checked');
+    return Array.from(checkboxes).map(cb => ({
+        id: cb.value,
+        name: cb.getAttribute('data-name') || '未知检查',
+        fullReport: cb.getAttribute('data-full-report') || ''
+    }));
 }
-window.aiDailyTracking = aiDailyTracking;
 
-async function transferDepartment(id) {
-    const newDept = prompt('请输入转入科室名称：');
-    if (!newDept) return;
-    const reason = prompt('请输入转科原因：') || '';
-    try {
-        const response = await fetch(`${API_BASE_URL}/admissions/${id}/transfer`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ newDepartment: newDept, reason })
-        });
-        if (response.ok) {
-            alert('转科成功');
-            renderAdmissionList();
-        } else {
-            alert('转科失败');
-        }
-    } catch (err) {
-        alert('转科失败: ' + err.message);
-    }
-}
-window.transferDepartment = transferDepartment;
-
-async function dischargePatient(id) {
-    if (!confirm('确定要办理出院吗？')) return;
-    const dischargeSummary = prompt('请输入出院小结（可选）：') || '';
-    try {
-        const response = await fetch(`${API_BASE_URL}/admissions/${id}/discharge`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dischargeSummary })
-        });
-        if (response.ok) {
-            alert('出院办理成功');
-            renderAdmissionList();
-        } else {
-            alert('出院办理失败');
-        }
-    } catch (err) {
-        alert('出院办理失败: ' + err.message);
-    }
-}
-window.dischargePatient = dischargePatient;
-
-// ============================================================
-// 会诊模块
-// ============================================================
 async function aiFillConsultation() {
     if (!currentPatient) {
         alert('请先创建患者');
@@ -3570,11 +3351,11 @@ async function aiFillConsultation() {
     }
 
     try {
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/consultations/ai-generate`, {
+        const response = await fetch(`${API_BASE_URL}/consultations/ai-generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ patientId: currentPatient.id })
-        }), '会诊填写');
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -3656,7 +3437,8 @@ async function submitConsultation() {
         requestingDoctor: '',
         reason: reason,
         diagnosis: diagnosis,
-        status: 'pending'
+        status: 'pending',
+        attachedExaminations: getSelectedExams()
     };
 
     try {
@@ -3714,6 +3496,19 @@ async function renderConsultationList() {
                     类型: ${consultTypeMap[c.type] || c.type} | 申请科室: ${c.requestingDepartment || '-'} → 会诊科室: ${c.consultingDepartment || '-'}
                 </div>
                 ${c.reason ? `<div style="color:#666; font-size:13px;">原因: ${c.reason}</div>` : ''}
+                ${c.attachedExaminations && c.attachedExaminations.length > 0 ? `
+                    <div style="margin-top:6px; padding:6px 8px; background:#f8f9fa; border-radius:4px; font-size:12px;">
+                        <div style="font-weight:600; color:#555; margin-bottom:3px;">📎 附带检查 (${c.attachedExaminations.length}项)</div>
+                        ${c.attachedExaminations.map(e => {
+                            const report = e.fullReport || e.brief || '';
+                            const displayText = report.length > 150 ? report.substring(0, 150) + '...' : report;
+                            return `<div style="color:#666; padding:2px 0; border-bottom:1px solid #eee;">
+                                <div style="font-weight:500; color:#444;">• ${e.name}</div>
+                                ${displayText ? `<div style="padding-left:10px; font-size:11px; color:#777; white-space:pre-wrap;">${displayText}</div>` : ''}
+                            </div>`;
+                        }).join('')}
+                    </div>
+                ` : ''}
                 <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
                     ${c.status === 'pending' ? `
                         <button class="btn btn-sm btn-primary" onclick="updateConsultationStatus('${c.id}','in_progress')">开始会诊</button>
@@ -3748,10 +3543,10 @@ async function aiGenerateOpinion(id, btn) {
         btn.innerHTML = '⏳ 生成中...';
     }
     try {
-        const response = await apiRateLimiter.execute(() => fetch(`${API_BASE_URL}/consultations/${id}/ai-opinion`, {
+        const response = await fetch(`${API_BASE_URL}/consultations/${id}/ai-opinion`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
-        }), '会诊意见');
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -3876,6 +3671,7 @@ function showModal(title, content) {
     if (settingsBtn) {
         settingsBtn.addEventListener('click', async () => {
             settingsModal.classList.remove('hidden');
+            await loadApiPresets();
             await loadCurrentModel();
         });
     }
@@ -3890,6 +3686,88 @@ function showModal(title, content) {
     const testModelBtn = document.getElementById('testModelBtn');
     if (testModelBtn) {
         testModelBtn.addEventListener('click', testCurrentModel);
+    }
+
+    // 加载API网关预设列表
+    async function loadApiPresets() {
+        const listEl = document.getElementById('apiPresetsList');
+        if (!listEl) return;
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/settings/presets`);
+            const data = await response.json();
+            
+            if (data.success && data.data) {
+                listEl.innerHTML = data.data.map(preset => `
+                    <div class="preset-item" data-preset-id="${preset.id}" style="
+                        padding:12px; border-radius:8px; cursor:pointer;
+                        border:2px solid ${preset.isCurrent ? '#5cb85c' : '#e0e0e0'};
+                        background:${preset.isCurrent ? '#f0fff0' : '#fff'};
+                        transition:all 0.2s;
+                    " onmouseover="this.style.borderColor='#5bc0de'" onmouseout="this.style.borderColor='${preset.isCurrent ? '#5cb85c' : '#e0e0e0'}'">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-weight:600;color:#333;">${preset.name}</span>
+                            ${preset.isCurrent ? '<span style="color:#5cb85c;font-size:12px;">✓ 当前使用</span>' : ''}
+                        </div>
+                        <div style="font-size:12px;color:#888;margin-top:4px;">${preset.description}</div>
+                        <div style="font-size:11px;color:#aaa;margin-top:2px;word-break:break-all;">${preset.apiUrl}</div>
+                    </div>
+                `).join('');
+                
+                // 点击切换网关
+                listEl.querySelectorAll('.preset-item').forEach(item => {
+                    item.addEventListener('click', async () => {
+                        const presetId = item.dataset.presetId;
+                        await switchApiPreset(presetId);
+                    });
+                });
+            } else {
+                listEl.innerHTML = '<div style="color:#d9534f;padding:8px;">加载失败</div>';
+            }
+        } catch (error) {
+            listEl.innerHTML = `<div style="color:#d9534f;padding:8px;">网络错误: ${error.message}</div>`;
+        }
+    }
+    
+    // 切换API网关
+    async function switchApiPreset(presetId) {
+        const resultEl = document.getElementById('modelTestResult');
+        if (resultEl) {
+            resultEl.textContent = '⏳ 正在切换网关...';
+            resultEl.className = 'test-result';
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ presetId })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                if (resultEl) {
+                    resultEl.textContent = '✅ 网关已切换';
+                    resultEl.className = 'test-result success';
+                }
+                // 刷新预设列表和模型显示
+                await loadApiPresets();
+                await loadCurrentModel();
+                // 清空模型列表
+                const modelsList = document.getElementById('modelsList');
+                if (modelsList) modelsList.innerHTML = '';
+            } else {
+                if (resultEl) {
+                    resultEl.textContent = '❌ 切换失败: ' + (data.message || '未知错误');
+                    resultEl.className = 'test-result error';
+                }
+            }
+        } catch (error) {
+            if (resultEl) {
+                resultEl.textContent = '❌ 网络错误: ' + error.message;
+                resultEl.className = 'test-result error';
+            }
+        }
     }
 
     // 加载当前模型显示

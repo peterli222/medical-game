@@ -186,6 +186,14 @@ class PatientAgent {
     this.useLLM = true; // 聊天对话使用大模型
   }
 
+  // 确保symptoms是数组
+  static ensureSymptomsArray(symptoms) {
+    if (typeof symptoms === 'string') {
+      return symptoms.split(/[,，、;；\s]+/).filter(s => s.trim());
+    }
+    return Array.isArray(symptoms) ? symptoms : [];
+  }
+
   // 生成新患者
   generatePatient(recentCases = [], department = '') {
     // Check if AI case generation is enabled
@@ -217,13 +225,49 @@ class PatientAgent {
     this.patient = new Patient();
     
     // 根据疾病设置症状（随机选择3-5个主要症状）
-    const shuffledSymptoms = this.currentCase.symptoms.sort(() => 0.5 - Math.random());
+    const symptomsArray = PatientAgent.ensureSymptomsArray(this.currentCase.symptoms);
+    const shuffledSymptoms = symptomsArray.sort(() => 0.5 - Math.random());
     this.patient.symptoms = shuffledSymptoms.slice(0, Math.floor(Math.random() * 3) + 3);
     
     // 设置病史
     this.patient.medicalHistory = this.generateMedicalHistory();
     this.patient.allergies = Math.random() > 0.7 ? ['青霉素', '磺胺类药物'][Math.floor(Math.random() * 2)] : [];
     
+    return this.patient;
+  }
+
+  // 强制本地生成患者（不尝试AI，用于AI失败后的回退）
+  _forceLocalGenerate(recentCases = [], department = '') {
+    let availableCases = DISEASE_CASES;
+    if (recentCases && recentCases.length > 0) {
+      availableCases = DISEASE_CASES.filter(c => !recentCases.includes(c.name));
+      if (availableCases.length === 0) availableCases = DISEASE_CASES;
+    }
+    // 如果指定了科室，优先匹配
+    if (department) {
+      const deptCases = availableCases.filter(c => c.department === department);
+      if (deptCases.length > 0) availableCases = deptCases;
+    }
+    const randomCase = availableCases[Math.floor(Math.random() * availableCases.length)];
+    this.currentCase = JSON.parse(JSON.stringify(randomCase));
+
+    const isReturnVisit = Math.random() < 0.3;
+    this.currentCase.isReturnVisit = isReturnVisit;
+    if (isReturnVisit) {
+      this.currentCase.previousVisit = {
+        lastDiagnosis: randomCase.name,
+        lastVisitDays: Math.floor(Math.random() * 14) + 3,
+        chiefComplaint: '症状未完全缓解，前来复诊'
+      };
+    }
+
+    this.patient = new Patient();
+    const symptomsArray = PatientAgent.ensureSymptomsArray(this.currentCase.symptoms);
+    const shuffledSymptoms = symptomsArray.sort(() => 0.5 - Math.random());
+    this.patient.symptoms = shuffledSymptoms.slice(0, Math.floor(Math.random() * 3) + 3);
+    this.patient.medicalHistory = this.generateMedicalHistory();
+    this.patient.allergies = Math.random() > 0.7 ? ['青霉素', '磺胺类药物'][Math.floor(Math.random() * 2)] : [];
+
     return this.patient;
   }
 
@@ -262,7 +306,8 @@ class PatientAgent {
         }
 
         // Set symptoms from AI case
-        const shuffledSymptoms = aiCase.symptoms.sort(() => 0.5 - Math.random());
+        const symptomsArray = PatientAgent.ensureSymptomsArray(aiCase.symptoms);
+        const shuffledSymptoms = symptomsArray.sort(() => 0.5 - Math.random());
         this.patient.symptoms = shuffledSymptoms.slice(0, Math.floor(Math.random() * 3) + 3);
 
         this.patient.medicalHistory = this.generateMedicalHistory();
@@ -288,7 +333,8 @@ class PatientAgent {
       };
     }
     this.patient = new Patient();
-    const shuffledSymptoms = this.currentCase.symptoms.sort(() => 0.5 - Math.random());
+    const symptomsArray = PatientAgent.ensureSymptomsArray(this.currentCase.symptoms);
+    const shuffledSymptoms = symptomsArray.sort(() => 0.5 - Math.random());
     this.patient.symptoms = shuffledSymptoms.slice(0, Math.floor(Math.random() * 3) + 3);
     this.patient.medicalHistory = this.generateMedicalHistory();
     this.patient.allergies = Math.random() > 0.7 ? ['青霉素', '磺胺类药物'][Math.floor(Math.random() * 2)] : [];
@@ -678,7 +724,9 @@ class PatientAgent {
 
   // 获取正确诊断
   getCorrectDiagnosis() {
-    return this.currentCase ? this.currentCase.name : '';
+    if (!this.currentCase) return '';
+    // AI生成的病例用disease字段，本地病例用name字段
+    return this.currentCase.disease || this.currentCase.name || '';
   }
 
   // 获取推荐治疗
