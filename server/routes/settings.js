@@ -28,15 +28,15 @@ const API_PRESETS = [
     id: 'xinjianya',
     name: '新剑雅网关',
     apiUrl: 'https://new.xinjianya.top/v1/chat/completions',
-    apiKey: 'sk-DqjWMhaVbsSb8L1Jlxs6ssTwpKQfKS6VWwSUlkkVVictV16z',
+    apiKey: 'YOUR_API_KEY',
     model: 'glm-5.1',
     description: '默认网关，GLM-5.1中文效果好'
   },
   {
     id: 'local-proxy',
     name: '本地代理',
-    apiUrl: 'http://117.72.172.112:3000/v1/chat/completions',
-    apiKey: 'dsr_l1gDqt2SQ_JOXXw6JYvWwnjSyCG1YW4j',
+    apiUrl: 'http://localhost:3000/v1/chat/completions',
+    apiKey: 'YOUR_API_KEY',
     model: 'deepseek-chat-fast',
     description: '本地DeepSeek代理'
   },
@@ -44,7 +44,7 @@ const API_PRESETS = [
     id: 'siliconflow-r1',
     name: 'SiliconFlow DeepSeek-R1',
     apiUrl: 'https://api.siliconflow.cn/v1/chat/completions',
-    apiKey: 'sk-gedldbwqkutrjwjmrjyrngjhljkbqxcpezpkmbsloxewoktc',
+    apiKey: 'YOUR_API_KEY',
     model: 'deepseek-ai/DeepSeek-R1',
     description: 'SiliconFlow平台，DeepSeek-R1推理模型'
   },
@@ -52,7 +52,7 @@ const API_PRESETS = [
     id: 'xinjianya-v2',
     name: '新剑雅网关V2',
     apiUrl: 'https://new.xinjianya.top/v1/chat/completions',
-    apiKey: 'sk-JWfmkrwfPhHvjDUgfDqYVENC71W8V25PhFi7YQZnazvCxN2Y',
+    apiKey: 'YOUR_API_KEY',
     model: 'deepseek-chat',
     description: '新剑雅备用网关'
   },
@@ -60,7 +60,7 @@ const API_PRESETS = [
     id: 'sensenova',
     name: 'SenseNova DeepSeek-V4',
     apiUrl: 'https://token.sensenova.cn/v1/chat/completions',
-    apiKey: 'sk-d2ph1OVPTqUgiBlxJkJ1Y7oQ9nhxOxqI',
+    apiKey: 'YOUR_API_KEY',
     model: 'deepseek-v4-flash',
     description: 'SenseNova平台，DeepSeek-V4-Flash，无限制'
   }
