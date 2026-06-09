@@ -152,16 +152,20 @@ router.post('/ai-admit', async (req, res) => {
 
     send('progress', { message: 'AI正在分析病情并推荐科室...' });
 
+    // 使用统一的患者信息前缀格式
+    const agent = dataStore.getPatientAgent(patientId);
+    const conversationHistory = (agent && agent.conversationHistory) ? agent.conversationHistory : [];
+    const completedExams = dataStore.getPatientExaminationOrders(patientId)
+      .filter(o => o.status === 'completed');
+    const completedSurgeries = dataStore.getPatientSurgeries(patientId)
+      .filter(s => s.status === 'completed');
+    const patientInfo = { name: patient.name, age: patient.age, gender: patient.gender };
+    const caseInfo = agent && agent.currentCase ? agent.currentCase : {};
+    const patientContext = llmService.buildPatientContextBlock(patientInfo, caseInfo, completedExams, { conversationHistory, completedSurgeries });
+
     const prompt = `你是一名资深住院医师。请根据以下患者信息，给出住院建议。
 
-患者信息：
-- 姓名：${patient.name}
-- 年龄：${patient.age}
-- 性别：${patient.gender}
-- 主诉：${patient.chiefComplaint || '无'}
-- 现病史：${patient.presentIllness || '无'}
-- 既往史：${patient.pastHistory || '无'}
-- 诊断：${patient.diagnosis || '未明确'}
+${patientContext}
 
 可用科室：${Object.keys(DEPARTMENT_CONFIG).join(', ')}
 
@@ -271,18 +275,28 @@ router.post('/:id/ai-daily-tracking', async (req, res) => {
 
     send('progress', { message: 'AI正在生成每日病程记录...' });
 
+    // 使用统一的患者信息前缀格式
+    const agent = dataStore.getPatientAgent(admission.patientId);
+    const conversationHistory = (agent && agent.conversationHistory) ? agent.conversationHistory : [];
+    const completedExams = dataStore.getPatientExaminationOrders(admission.patientId)
+      .filter(o => o.status === 'completed');
+    const completedSurgeries = dataStore.getPatientSurgeries(admission.patientId)
+      .filter(s => s.status === 'completed');
+    const patientInfo = patient ? { name: patient.name, age: patient.age, gender: patient.gender } : {};
+    const caseInfo = agent && agent.currentCase ? agent.currentCase : {};
+    const patientContext = llmService.buildPatientContextBlock(patientInfo, caseInfo, completedExams, { conversationHistory, completedSurgeries });
+
     const previousRecords = (admission.dailyRecords || [])
       .map((r, i) => `第${i + 1}天 (${r.date}): ${r.content}`)
       .join('\n');
 
     const prompt = `你是一名主治医师，请为以下住院患者生成今日病程记录。
 
-患者信息：
-- 姓名：${admission.patientName || (patient && patient.name) || '未知'}
-- 科室：${admission.department}
-- 床号：${admission.bed}
-- 入院诊断：${admission.admissionDiagnosis}
-- 治疗方案：${admission.treatmentPlan}
+${patientContext}
+
+科室：${admission.department} | 床号：${admission.bed}
+入院诊断：${admission.admissionDiagnosis}
+治疗方案：${admission.treatmentPlan}
 
 ${previousRecords ? `之前的病程记录：\n${previousRecords}` : '这是首次病程记录。'}
 

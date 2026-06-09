@@ -47,6 +47,22 @@ const API_PRESETS = [
     apiKey: 'sk-gedldbwqkutrjwjmrjyrngjhljkbqxcpezpkmbsloxewoktc',
     model: 'deepseek-ai/DeepSeek-R1',
     description: 'SiliconFlow平台，DeepSeek-R1推理模型'
+  },
+  {
+    id: 'xinjianya-v2',
+    name: '新剑雅网关V2',
+    apiUrl: 'https://new.xinjianya.top/v1/chat/completions',
+    apiKey: 'sk-JWfmkrwfPhHvjDUgfDqYVENC71W8V25PhFi7YQZnazvCxN2Y',
+    model: 'deepseek-chat',
+    description: '新剑雅备用网关'
+  },
+  {
+    id: 'sensenova',
+    name: 'SenseNova DeepSeek-V4',
+    apiUrl: 'https://token.sensenova.cn/v1/chat/completions',
+    apiKey: 'sk-d2ph1OVPTqUgiBlxJkJ1Y7oQ9nhxOxqI',
+    model: 'deepseek-v4-flash',
+    description: 'SenseNova平台，DeepSeek-V4-Flash，无限制'
   }
 ];
 
@@ -137,8 +153,8 @@ router.get('/', (req, res) => {
     data: {
       ...settings,
       apiKey: maskApiKey(settings.apiKey),
-      // 添加当前使用的预设ID（如果匹配）
-      currentPreset: API_PRESETS.find(p => settings.apiUrl && settings.apiUrl.includes(new URL(p.apiUrl).hostname))?.id || 'custom'
+      // 添加当前使用的预设ID（通过apiUrl+apiKey+model精确匹配）
+      currentPreset: API_PRESETS.find(p => p.apiUrl === settings.apiUrl && p.apiKey === settings.apiKey && p.model === settings.model)?.id || 'custom'
     }
   });
 });
@@ -150,7 +166,8 @@ router.get('/presets', (req, res) => {
   
   const presets = API_PRESETS.map(p => ({
     ...p,
-    isCurrent: currentHostname && p.apiUrl.includes(currentHostname)
+    // 通过apiUrl+apiKey+model精确匹配，避免同域名不同key的误判
+    isCurrent: p.apiUrl === settings.apiUrl && p.apiKey === settings.apiKey && p.model === settings.model
   }));
   
   res.json({ success: true, data: presets });
@@ -176,8 +193,13 @@ router.post('/', (req, res) => {
         newModel = preset.model;
       }
     }
-  } else if (apiUrl !== undefined) {
-    newApiUrl = apiUrl.trim();
+  } else {
+    if (apiUrl !== undefined) {
+      newApiUrl = apiUrl.trim();
+    }
+    if (model !== undefined) {
+      newModel = model.trim();
+    }
   }
   
   // 判断 apiKey 是否是遮罩格式（***xxxx），如果是则保留原值
@@ -207,7 +229,7 @@ router.post('/', (req, res) => {
     data: { 
       ...updated, 
       apiKey: maskApiKey(updated.apiKey),
-      currentPreset: API_PRESETS.find(p => updated.apiUrl && updated.apiUrl.includes(new URL(p.apiUrl).hostname))?.id || 'custom'
+      currentPreset: API_PRESETS.find(p => p.apiUrl === updated.apiUrl && p.apiKey === updated.apiKey && p.model === updated.model)?.id || 'custom'
     } 
   });
 });

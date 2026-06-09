@@ -4,10 +4,16 @@ const { Consultation, CONSULTATION_TYPES, CONSULTATION_STATUS } = require('../mo
 const dataStore = require('../services/DataStore');
 const llmService = require('../services/LLMService');
 
-// 获取所有会诊记录
+// 获取所有会诊记录（支持patientId过滤）
 router.get('/', (req, res) => {
   try {
-    const consultations = dataStore.getAllConsultations();
+    const { patientId } = req.query;
+    let consultations;
+    if (patientId) {
+      consultations = dataStore.getPatientConsultations(patientId);
+    } else {
+      consultations = dataStore.getAllConsultations();
+    }
     res.json({ success: true, data: consultations });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -126,30 +132,28 @@ router.post('/:id/ai-opinion', async (req, res) => {
 
     sendEvent('status', { message: '正在收集患者资料...' });
 
+    // 使用统一的患者信息前缀格式（提高缓存命中率）
+    const agent = dataStore.getPatientAgent(consultation.patientId);
+    const conversationHistory = (agent && agent.conversationHistory) ? agent.conversationHistory : [];
+    const completedExams = dataStore.getPatientExaminationOrders(consultation.patientId)
+      .filter(o => o.status === 'completed');
+    const completedSurgeries = dataStore.getPatientSurgeries(consultation.patientId)
+      .filter(s => s.status === 'completed');
+    const patientInfo = { name: patient.name, age: patient.age, gender: patient.gender };
+    const caseInfo = agent && agent.currentCase ? agent.currentCase : {};
+    const patientContext = llmService.buildPatientContextBlock(patientInfo, caseInfo, completedExams, { conversationHistory, completedSurgeries });
+
     // 自动获取患者病例作为上下文
     const medicalRecord = dataStore.getPatientMedicalRecord(consultation.patientId);
     const medicalRecordContext = medicalRecord
       ? `病历信息：\n主诉：${medicalRecord.chiefComplaint || '无'}\n现病史：${medicalRecord.presentIllness || '无'}\n既往史：${medicalRecord.pastHistory || '无'}\n诊断：${medicalRecord.diagnosis || '无'}\n中医诊断：${medicalRecord.tcmDiagnosis || '无'}`
       : '暂无病历记录';
 
-    // 获取检查记录
-    const examinations = dataStore.getPatientExaminationOrders(consultation.patientId);
-    const examContext = examinations.length > 0
-      ? `检查记录：\n${examinations.map(e => `- ${e.examinationName}：${e.status === 'completed' ? (e.result?.description || '已完成') : e.status}`).join('\n')}`
-      : '暂无检查记录';
-
     // 附带检查结果（医生特别指定的）
     const attachedExams = consultation.attachedExaminations || [];
     const attachedContext = attachedExams.length > 0
       ? `医生特别附带的检查结果（重点参考）：\n${attachedExams.map(e => `- ${e.name}：\n${e.fullReport || e.brief || '有结果'}`).join('\n')}`
       : '';
-
-    // 获取问诊记录（患者智能体的对话历史）
-    const agent = dataStore.getPatientAgent(consultation.patientId);
-    let inquiryContext = '暂无问诊记录';
-    if (agent && agent.conversationHistory && agent.conversationHistory.length > 0) {
-      inquiryContext = `问诊记录：\n${agent.conversationHistory.map(c => `${c.role === 'doctor' ? '医生' : '患者'}：${c.content}`).join('\n')}`;
-    }
 
     sendEvent('status', { message: '正在生成AI会诊意见...' });
 
@@ -159,6 +163,8 @@ router.post('/:id/ai-opinion', async (req, res) => {
     // 构建AI提示
     const prompt = `你是一位资深医学专家，正在参与${typeName}。请根据以下信息给出专业的会诊意见。
 
+${patientContext}
+
 【会诊信息】
 会诊类型：${typeName}
 申请科室：${consultation.requestingDepartment || '未指定'}
@@ -167,18 +173,9 @@ router.post('/:id/ai-opinion', async (req, res) => {
 会诊原因：${consultation.reason || '未提供'}
 初步诊断：${consultation.diagnosis || '未提供'}
 
-【患者信息】
-姓名：${patient.name}
-年龄：${patient.age}岁
-性别：${patient.gender}
-
 【${medicalRecordContext}】
 
-【${examContext}】
-
-${attachedContext ? `【${attachedContext}】\n\n` : ''}【${inquiryContext}】
-
-请给出详细的会诊意见，包括：
+${attachedContext ? `【${attachedContext}】\n\n` : ''}请给出详细的会诊意见，包括：
 1. 对患者病情的分析和评估
 2. 建议的进一步检查（如有需要）
 3. 治疗方案建议
@@ -301,27 +298,22 @@ router.post('/ai-generate', async (req, res) => {
       return;
     }
 
-    // 获取病历信息作为上下文
-    const medicalRecord = dataStore.getPatientMedicalRecord(patientId);
-    const medicalRecordContext = medicalRecord
-      ? `主诉：${medicalRecord.chiefComplaint || '无'}\n现病史：${medicalRecord.presentIllness || '无'}\n既往史：${medicalRecord.pastHistory || '无'}\n诊断：${medicalRecord.diagnosis || '无'}`
-      : '暂无病历记录';
+    // 使用统一的患者信息前缀格式
+    const agent = dataStore.getPatientAgent(patientId);
+    const conversationHistory = (agent && agent.conversationHistory) ? agent.conversationHistory : [];
+    const completedExams = dataStore.getPatientExaminationOrders(patientId)
+      .filter(o => o.status === 'completed');
+    const completedSurgeries = dataStore.getPatientSurgeries(patientId)
+      .filter(s => s.status === 'completed');
+    const patientInfo = { name: patient.name, age: patient.age, gender: patient.gender };
+    const caseInfo = agent && agent.currentCase ? agent.currentCase : {};
+    const patientContext = llmService.buildPatientContextBlock(patientInfo, caseInfo, completedExams, { conversationHistory, completedSurgeries });
 
     send('progress', { message: 'AI正在分析病情并生成会诊申请...' });
 
     const prompt = `你是一名资深主治医师。请根据以下患者信息，生成一份会诊申请。
 
-患者信息：
-- 姓名：${patient.name}
-- 年龄：${patient.age}
-- 性别：${patient.gender}
-- 主诉：${patient.chiefComplaint || '无'}
-- 现病史：${patient.presentIllness || '无'}
-- 既往史：${patient.pastHistory || '无'}
-- 当前诊断：${patient.diagnosis || '未明确'}
-
-病历信息：
-${medicalRecordContext}
+${patientContext}
 
 会诊类型说明：
 - regular：普通会诊（一般病情需要其他科室协助）

@@ -45,10 +45,10 @@ let medicalRecords = [];
 let currentRecordId = null;
 
 // ============================================================
-// AI请求限流器 — 每20秒最多1次请求，超出排队
+// AI请求限流器 — 已禁用（模型无限制）
 // ============================================================
 const aiRateLimiter = {
-    interval: 20000,           // 20秒间隔
+    interval: 0,               // 无间隔限制
     lastRequestTime: 0,        // 上次请求发起时间
     queue: [],                 // 排队队列 [{fn, resolve, reject, label}]
     processing: false,         // 是否正在处理队列
@@ -142,71 +142,6 @@ const aiRateLimiter = {
         this.processing = false;
     }
 };
-
-// 语音服务
-const speechService = {
-    isSupported: 'speechSynthesis' in window,
-    
-    playNotificationSound() {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-        oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.1);
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.3);
-    },
-    
-    speak(text) {
-        if (!this.isSupported) {
-            console.log('浏览器不支持语音合成功能');
-            return;
-        }
-        
-        window.speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        utterance.volume = 1;
-        
-        const voices = window.speechSynthesis.getVoices();
-        const chineseVoice = voices.find(v => v.lang.startsWith('zh') && v.name.includes('Female')) || 
-                            voices.find(v => v.lang.startsWith('zh'));
-        if (chineseVoice) {
-            utterance.voice = chineseVoice;
-        }
-        
-        window.speechSynthesis.speak(utterance);
-    },
-    
-    callPatient(patientName) {
-        this.playNotificationSound();
-        
-        setTimeout(() => {
-            const message = `请${patientName}到诊室就诊`;
-            this.speak(message);
-        }, 350);
-    }
-};
-
-// 初始化语音服务
-document.addEventListener('DOMContentLoaded', () => {
-    if ('speechSynthesis' in window) {
-        window.speechSynthesis.onvoiceschanged = () => {
-            console.log('语音引擎已就绪');
-        };
-    }
-});
 
 // 工具函数：防抖
 function debounce(func, wait) {
@@ -538,6 +473,12 @@ function setupEventListeners() {
     }
     if (elements.surgeryTypeSelect) {
         loadSurgeryDatabase();
+        // 从下拉框选择手术时也启用提交按钮
+        elements.surgeryTypeSelect.addEventListener('change', function() {
+            if (elements.submitSurgeryBtn) {
+                elements.submitSurgeryBtn.disabled = !this.value;
+            }
+        });
     }
     
 
@@ -577,14 +518,14 @@ function switchTab(tabName) {
     }
 }
 
-// 创建新患者
+// 保存最近病例到本地存储
 function saveRecentCase(caseName) {
     try {
         let cases = [];
         const saved = localStorage.getItem('medical_recent_cases');
         if (saved) cases = JSON.parse(saved);
         cases.unshift(caseName);
-        if (cases.length > 10) cases = cases.slice(0, 10);
+        if (cases.length > 500) cases = cases.slice(0, 500); // 保存最近500个
         localStorage.setItem('medical_recent_cases', JSON.stringify(cases));
     } catch (e) {}
 }
@@ -610,12 +551,22 @@ async function createNewPatient() {
     elements.newPatientBtn.textContent = '生成中...';
     
     try {
-        // Build recentCases from localStorage
+        // 从后端获取历史病例列表（最多500个）
         let recentCases = [];
         try {
+            const historyRes = await fetch(`${API_BASE_URL}/patients/history-cases`);
+            if (historyRes.ok) {
+                const historyData = await historyRes.json();
+                if (historyData.success && historyData.data) {
+                    recentCases = historyData.data.map(c => c.disease);
+                }
+            }
+        } catch (e) {
+            console.warn('获取历史病例失败，使用本地存储:', e);
+            // 回退到本地存储
             const saved = localStorage.getItem('medical_recent_cases');
             if (saved) recentCases = JSON.parse(saved);
-        } catch (e) {}
+        }
 
         const department = document.getElementById('departmentSelect')?.value || '';
         const response = await aiRateLimiter.enqueue(() =>
@@ -679,7 +630,6 @@ async function createNewPatient() {
                         }
                         patientReceived = true;
                         renderPatientInfo();
-                        speechService.callPatient(currentPatient.name);
                         enableControls();
                         // 保存疾病名称用于避免重复生成相同疾病
                         const diseaseName = (currentPatient._case && currentPatient._case.disease) || currentPatient.name;
@@ -735,7 +685,6 @@ async function createNewPatient() {
                 if (data.success) {
                     currentPatient = data.data.patient;
                     renderPatientInfo();
-                    speechService.callPatient(currentPatient.name);
                     renderInitialMessage(data.data.initialDescription);
                     enableControls();
                     saveRecentCase(currentPatient.symptoms || currentPatient.name);
@@ -795,7 +744,6 @@ function createNewPatientLocal() {
     };
     
     renderPatientInfo();
-    speechService.callPatient(currentPatient.name);
     
     const initialMessage = `医生您好，我${currentPatient.symptoms}已经好几天了，请帮我看看。`;
     renderInitialMessage(initialMessage);
@@ -1039,6 +987,10 @@ function loadRecordToForm(record) {
                     bdHtml += `<div class="breakdown-row"><span class="bd-label">问诊技巧</span><div class="bd-bar-wrap"><div class="bd-bar" style="width:${(bd.consultation.score/15*100).toFixed(0)}%;background:${record.gradeColor || '#4CAF50'}"></div></div><span class="bd-score">${bd.consultation.score || 0}/15</span></div>`;
                     if (bd.consultation.comment) bdHtml += `<div class="bd-comment">${bd.consultation.comment}</div>`;
                 }
+                if (bd.surgery) {
+                    bdHtml += `<div class="breakdown-row"><span class="bd-label">手术处理</span><div class="bd-bar-wrap"><div class="bd-bar" style="width:${(bd.surgery.score/20*100).toFixed(0)}%;background:${record.gradeColor || '#4CAF50'}"></div></div><span class="bd-score">${bd.surgery.score || 0}/20</span></div>`;
+                    if (bd.surgery.comment) bdHtml += `<div class="bd-comment">${bd.surgery.comment}</div>`;
+                }
                 breakdownEl.innerHTML = bdHtml;
             }
 
@@ -1073,10 +1025,136 @@ function loadRecordToForm(record) {
                 commentEl.style.display = 'none';
             }
 
+            // 错误分析
+            const errorPanelEl = document.getElementById('scorePanelErrorPoints');
+            if (errorPanelEl && record.errorPoints && record.errorPoints.length > 0) {
+                let epHtml = '';
+                record.errorPoints.forEach(ep => {
+                    epHtml += `<div class="error-point-card">
+                        <div class="error-point-header"><span class="error-point-tag">${ep.category || '其他'}</span></div>
+                        <div class="error-point-body">
+                            <div class="error-point-error"><span class="ep-icon">❌</span><span>${ep.error}</span></div>
+                            <div class="error-point-correct"><span class="ep-icon">✅</span><span>${ep.correct}</span></div>
+                        </div>
+                    </div>`;
+                });
+                errorPanelEl.innerHTML = epHtml;
+                errorPanelEl.style.display = 'block';
+            } else if (errorPanelEl) {
+                errorPanelEl.style.display = 'none';
+            }
+
             scorePanel.style.display = 'block';
         } else {
             scorePanel.style.display = 'none';
         }
+    }
+
+    // 加载该患者的会诊结果
+    loadRecordConsultations(record.patientId);
+
+    // 加载该患者的手术记录
+    loadRecordSurgeries(record.patientId);
+}
+
+// 加载病历关联的会诊记录
+async function loadRecordConsultations(patientId) {
+    const section = document.getElementById('recordConsultationSection');
+    const container = document.getElementById('recordConsultationResults');
+    if (!section || !container) return;
+
+    if (!patientId) {
+        section.style.display = 'none';
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/consultations?patientId=${patientId}`);
+        if (!response.ok) { section.style.display = 'none'; return; }
+        const data = await response.json();
+        if (!data.success || !data.data || data.data.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        const consultTypeMap = { 'regular': '普通会诊', 'emergency': '急会诊', 'multi': '多学科会诊' };
+        const consultStatusMap = { 'pending': '待会诊', 'in_progress': '会诊中', 'completed': '已完成', 'cancelled': '已取消' };
+        const consultStatusColor = { 'pending': '#f0ad4e', 'in_progress': '#0275d8', 'completed': '#5cb85c', 'cancelled': '#d9534f' };
+
+        let html = '';
+        data.data.forEach(c => {
+            html += `<div style="border:1px solid #e0e0e0; border-radius:6px; padding:10px; margin-bottom:8px; background:#fafafa;">`;
+            html += `<div style="display:flex; justify-content:space-between; align-items:center;">`;
+            html += `<span style="font-weight:600;">${consultTypeMap[c.type] || c.type}</span>`;
+            html += `<span style="background:${consultStatusColor[c.status] || '#999'}; color:#fff; padding:1px 8px; border-radius:4px; font-size:11px;">${consultStatusMap[c.status] || c.status}</span>`;
+            html += `</div>`;
+            html += `<div style="color:#888; font-size:12px; margin-top:2px;">${c.requestingDepartment || '-'} → ${c.consultingDepartment || '-'}</div>`;
+            if (c.reason) html += `<div style="margin-top:4px;">原因：${c.reason}</div>`;
+            if (c.diagnosis) html += `<div>诊断：${c.diagnosis}</div>`;
+            if (c.aiOpinion) html += `<div style="margin-top:6px; padding:6px 8px; background:#f0f7ff; border-radius:4px; white-space:pre-wrap;">🤖 AI意见：${c.aiOpinion}</div>`;
+            if (c.attachedExaminations && c.attachedExaminations.length > 0) {
+                html += `<div style="margin-top:4px; font-size:12px; color:#666;">📎 附带检查：${c.attachedExaminations.map(e => e.name).join('、')}</div>`;
+            }
+            html += `</div>`;
+        });
+
+        container.innerHTML = html;
+        section.style.display = 'block';
+    } catch (err) {
+        console.error('加载会诊记录失败:', err);
+        section.style.display = 'none';
+    }
+}
+
+// 加载病历关联的手术记录
+async function loadRecordSurgeries(patientId) {
+    const section = document.getElementById('recordSurgerySection');
+    const container = document.getElementById('recordSurgeryResults');
+    if (!section || !container) return;
+
+    if (!patientId) {
+        section.style.display = 'none';
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/surgeries?patientId=${patientId}`);
+        if (!response.ok) { section.style.display = 'none'; return; }
+        const data = await response.json();
+        if (!data.success || !data.data || data.data.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        const statusColor = { 'pending': '#f0ad4e', 'approved': '#5bc0de', 'preparing': '#5bc0de', 'in_progress': '#0275d8', 'completed': '#5cb85c', 'cancelled': '#d9534f' };
+        const statusLabel = { 'pending': '待审批', 'approved': '已审批', 'preparing': '术前准备', 'in_progress': '手术中', 'completed': '已完成', 'cancelled': '已取消' };
+
+        let html = '';
+        data.data.forEach(s => {
+            const surgeryName = (s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知');
+            html += `<div style="border:1px solid #e0e0e0; border-radius:6px; padding:10px; margin-bottom:8px; background:#fafafa;">`;
+            html += `<div style="display:flex; justify-content:space-between; align-items:center;">`;
+            html += `<span style="font-weight:600;">${surgeryName}</span>`;
+            html += `<span style="background:${statusColor[s.status] || '#999'}; color:#fff; padding:1px 8px; border-radius:4px; font-size:11px;">${statusLabel[s.status] || s.status}</span>`;
+            html += `</div>`;
+            html += `<div style="color:#888; font-size:12px; margin-top:2px;">${s.typeLabel || s.type} | ${s.anesthesiaLabel || s.anesthesiaType}</div>`;
+            if (s.diagnosis) html += `<div style="margin-top:2px;">术前诊断：${s.diagnosis}</div>`;
+            if (s.status === 'completed' || s.outcome) {
+                html += `<div style="margin-top:6px; padding:6px 8px; background:#f0fff0; border-radius:4px;">`;
+                if (s.outcome) html += `<div><strong>手术经过：</strong>${s.outcome}</div>`;
+                if (s.findings) html += `<div><strong>术中发现：</strong>${s.findings}</div>`;
+                if (s.complications) html += `<div><strong>并发症：</strong>${s.complications}</div>`;
+                if (s.postOpNotes) html += `<div><strong>术后处理：</strong>${s.postOpNotes}</div>`;
+                html += `</div>`;
+            }
+            html += `</div>`;
+        });
+
+        container.innerHTML = html;
+        section.style.display = 'block';
+    } catch (err) {
+        console.error('加载手术记录失败:', err);
+        section.style.display = 'none';
     }
 }
 
@@ -1328,10 +1406,12 @@ async function sendMessage(retryMsg) {
     _lastChatMessage = message;
     
     if (!retryMsg) {
+        // HTML转义，防止用户输入被当HTML解析
+        const escapedMsg = message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         elements.chatMessages.innerHTML += `
             <div class="chat-message doctor">
                 <div class="message-avatar">👨‍⚕️</div>
-                <div class="message-content">${message}</div>
+                <div class="message-content">${escapedMsg}</div>
             </div>
         `;
     }
@@ -2684,29 +2764,36 @@ function showDiagnosisResult(result) {
                     ${result.scoreBreakdown.diagnosis ? `
                         <div class="breakdown-item">
                             <div class="breakdown-label">诊断正确性</div>
-                            <div class="breakdown-score">${result.scoreBreakdown.diagnosis.score || 0}/45</div>
+                            <div class="breakdown-score">${result.scoreBreakdown.diagnosis.score || 0}/40</div>
                             <div class="breakdown-comment">${result.scoreBreakdown.diagnosis.comment || ''}</div>
                         </div>
                     ` : ''}
                     ${result.scoreBreakdown.examination ? `
                         <div class="breakdown-item">
                             <div class="breakdown-label">检查合理性</div>
-                            <div class="breakdown-score">${result.scoreBreakdown.examination.score || 0}/20</div>
+                            <div class="breakdown-score">${result.scoreBreakdown.examination.score || 0}/15</div>
                             <div class="breakdown-comment">${result.scoreBreakdown.examination.comment || ''}</div>
                         </div>
                     ` : ''}
                     ${result.scoreBreakdown.medicine ? `
                         <div class="breakdown-item">
                             <div class="breakdown-label">用药合理性</div>
-                            <div class="breakdown-score">${result.scoreBreakdown.medicine.score || 0}/20</div>
+                            <div class="breakdown-score">${result.scoreBreakdown.medicine.score || 0}/15</div>
                             <div class="breakdown-comment">${result.scoreBreakdown.medicine.comment || ''}</div>
                         </div>
                     ` : ''}
                     ${result.scoreBreakdown.consultation ? `
                         <div class="breakdown-item">
                             <div class="breakdown-label">问诊技巧</div>
-                            <div class="breakdown-score">${result.scoreBreakdown.consultation.score || 0}/15</div>
+                            <div class="breakdown-score">${result.scoreBreakdown.consultation.score || 0}/10</div>
                             <div class="breakdown-comment">${result.scoreBreakdown.consultation.comment || ''}</div>
+                        </div>
+                    ` : ''}
+                    ${result.scoreBreakdown.surgery ? `
+                        <div class="breakdown-item">
+                            <div class="breakdown-label">手术处理</div>
+                            <div class="breakdown-score">${result.scoreBreakdown.surgery.score || 0}/20</div>
+                            <div class="breakdown-comment">${result.scoreBreakdown.surgery.comment || ''}</div>
                         </div>
                     ` : ''}
                 </div>
@@ -2769,6 +2856,29 @@ function showDiagnosisResult(result) {
                         </div>
                     ` : ''}
                     
+                    ${result.errorPoints && result.errorPoints.length > 0 ? `
+                        <div class="error-points-section">
+                            <h4>⚠️ 错误分析与正确方案</h4>
+                            ${result.errorPoints.map(ep => `
+                                <div class="error-point-card">
+                                    <div class="error-point-header">
+                                        <span class="error-point-tag">${ep.category || '其他'}</span>
+                                    </div>
+                                    <div class="error-point-body">
+                                        <div class="error-point-error">
+                                            <span class="ep-icon">❌</span>
+                                            <span>${ep.error}</span>
+                                        </div>
+                                        <div class="error-point-correct">
+                                            <span class="ep-icon">✅</span>
+                                            <span>${ep.correct}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    
                     <div class="result-actions">
                         <button class="btn btn-primary" onclick="resetConsultationUI()">开始新诊疗</button>
                     </div>
@@ -2791,6 +2901,7 @@ function showDiagnosisResult(result) {
             record.correctDiagnosis = result.correctDiagnosis || '';
             record.aiScored = result.aiScored || false;
             record.overallComment = result.overallComment || '';
+            record.errorPoints = result.errorPoints || [];
             record.costs = result.costs || null;
             record.matchType = result.matchType || '';
             record.diagnosisMatch = result.diagnosisMatch || false;
@@ -2947,6 +3058,7 @@ async function rescoreCurrentRecord() {
             record.correctDiagnosis = resultData.correctDiagnosis || '';
             record.aiScored = resultData.aiScored || false;
             record.overallComment = resultData.overallComment || '';
+            record.errorPoints = resultData.errorPoints || [];
             record.costs = resultData.costs || null;
             record.matchType = resultData.matchType || '';
             record.diagnosisMatch = resultData.diagnosisMatch || false;
@@ -3077,6 +3189,10 @@ function selectSurgeryFromSearch(surgeryId) {
     if (elements.surgerySearchInput) {
         const found = surgeryDatabase.find(s => s.id === surgeryId);
         if (found) elements.surgerySearchInput.value = found.name;
+    }
+    // 选择手术后启用提交按钮
+    if (elements.submitSurgeryBtn) {
+        elements.submitSurgeryBtn.disabled = false;
     }
 }
 // 使函数全局可访问（用于onclick）
@@ -3274,7 +3390,7 @@ async function renderSurgeryList() {
                         ${s.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="updateSurgeryStatus('${s.id}','approved')">审批</button>` : ''}
                         ${s.status === 'approved' ? `<button class="btn btn-sm btn-primary" onclick="updateSurgeryStatus('${s.id}','preparing')">术前准备</button>` : ''}
                         ${s.status === 'preparing' ? `<button class="btn btn-sm btn-primary" onclick="updateSurgeryStatus('${s.id}','in_progress')">开始手术</button>` : ''}
-                        ${s.status === 'in_progress' ? `<button class="btn btn-sm btn-success" onclick="updateSurgeryStatus('${s.id}','completed')">完成</button>` : ''}
+                        ${s.status === 'in_progress' ? `<button class="btn btn-sm btn-success" onclick="completeSurgeryWithRecord('${s.id}')">完成</button>` : ''}
                         ${s.status !== 'completed' && s.status !== 'cancelled' ? `<button class="btn btn-sm btn-danger" onclick="updateSurgeryStatus('${s.id}','cancelled')">取消</button>` : ''}
                     </div>
                 </div>
@@ -3306,6 +3422,14 @@ function showSurgeryDetail(id) {
                 <p><strong>手术计划：</strong>${s.plan || '-'}</p>
                 <p><strong>风险：</strong>${s.risks || '-'}</p>
                 <p><strong>备注：</strong>${s.notes || '-'}</p>
+                ${s.status === 'completed' || s.outcome ? `
+                <hr style="margin:12px 0;border-color:#e0e0e0;">
+                <h4 style="color:#4CAF50;">📋 手术记录</h4>
+                <p><strong>手术经过/结果：</strong>${s.outcome || '-'}</p>
+                <p><strong>术中发现：</strong>${s.findings || '-'}</p>
+                <p><strong>并发症：</strong>${s.complications || '无'}</p>
+                <p><strong>术后处理：</strong>${s.postOpNotes || '-'}</p>
+                ` : ''}
                 <p><strong>创建时间：</strong>${s.createdAt || '-'}</p>
             `;
             if (s.aiArrangement) {
@@ -3354,6 +3478,88 @@ async function updateSurgeryStatus(id, status) {
     }
 }
 window.updateSurgeryStatus = updateSurgeryStatus;
+
+// 完成手术并填写手术记录
+async function completeSurgeryWithRecord(id) {
+    // 先获取手术详情
+    let surgery = null;
+    try {
+        const resp = await fetch(`${API_BASE_URL}/surgeries/${id}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.success) surgery = data.data;
+        }
+    } catch (e) {}
+
+    const surgeryName = surgery && surgery.surgeryType && typeof surgery.surgeryType === 'object'
+        ? surgery.surgeryType.name : (surgery?.surgeryType || '未知手术');
+
+    const html = `
+        <div style="padding:8px 0;">
+            <h4 style="margin-bottom:12px;">${surgeryName} - 手术记录</h4>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-weight:600;margin-bottom:4px;">手术经过/结果 *</label>
+                <textarea id="surgeryOutcome" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="描述手术经过和结果..."></textarea>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-weight:600;margin-bottom:4px;">术中发现</label>
+                <textarea id="surgeryFindings" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="术中发现的异常情况..."></textarea>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-weight:600;margin-bottom:4px;">并发症</label>
+                <input id="surgeryComplications" type="text" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;" placeholder="无 / 具体并发症描述">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-weight:600;margin-bottom:4px;">术后处理</label>
+                <textarea id="surgeryPostOpNotes" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="术后注意事项、用药等..."></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button class="btn btn-outline" onclick="document.getElementById('customModal').classList.add('hidden')">取消</button>
+                <button class="btn btn-primary" onclick="submitSurgeryCompletion('${id}')">确认完成</button>
+            </div>
+        </div>
+    `;
+    showModal('完成手术', html);
+}
+window.completeSurgeryWithRecord = completeSurgeryWithRecord;
+
+// 提交手术完成记录
+async function submitSurgeryCompletion(id) {
+    const outcome = document.getElementById('surgeryOutcome')?.value?.trim();
+    if (!outcome) {
+        alert('请填写手术经过/结果');
+        return;
+    }
+    const findings = document.getElementById('surgeryFindings')?.value?.trim() || '';
+    const complications = document.getElementById('surgeryComplications')?.value?.trim() || '';
+    const postOpNotes = document.getElementById('surgeryPostOpNotes')?.value?.trim() || '';
+
+    try {
+        // 更新手术结果字段
+        const resp1 = await fetch(`${API_BASE_URL}/surgeries/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outcome, findings, complications, postOpNotes })
+        });
+        if (!resp1.ok) throw new Error('保存手术记录失败');
+
+        // 更新状态为已完成
+        const resp2 = await fetch(`${API_BASE_URL}/surgeries/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'completed' })
+        });
+        if (!resp2.ok) throw new Error('更新状态失败');
+
+        document.getElementById('customModal')?.classList.add('hidden');
+        alert('手术记录已保存，手术已完成！');
+        renderSurgeryList();
+    } catch (err) {
+        console.error('完成手术失败:', err);
+        alert('操作失败: ' + err.message);
+    }
+}
+window.submitSurgeryCompletion = submitSurgeryCompletion;
 
 function getStatusLabel(status) {
     const map = {

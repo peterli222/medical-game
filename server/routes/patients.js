@@ -10,6 +10,31 @@ router.get('/', (req, res) => {
   res.json({ success: true, data: patients });
 });
 
+// 获取历史病例列表（最多500个，用于避免重复疾病）
+router.get('/history-cases', (req, res) => {
+  const agents = dataStore.patientAgents;
+  const cases = [];
+  
+  for (const [patientId, agent] of agents) {
+    if (agent.currentCase && agent.currentCase.disease) {
+      cases.push({
+        disease: agent.currentCase.disease,
+        name: agent.currentCase.name,
+        patientId: patientId
+      });
+    }
+  }
+  
+  // 按时间倒序，最多500个
+  const recentCases = cases.slice(-500).reverse();
+  
+  res.json({ 
+    success: true, 
+    data: recentCases,
+    total: cases.length
+  });
+});
+
 // 获取当前患者
 router.get('/current', (req, res) => {
   const patient = dataStore.getCurrentPatient();
@@ -129,7 +154,17 @@ router.post('/new-stream', async (req, res) => {
           department || ''
         );
 
-        if (aiCase && aiCase.name && aiCase.symptoms) {
+        if (aiCase) {
+          // 确保必需字段存在（AI可能返回部分数据）
+          if (!aiCase.name) {
+            // 从disease或diseaseDescription中尝试提取名字，否则用默认值
+            aiCase.name = '患者' + Math.floor(Math.random() * 1000);
+            console.warn('AI病例缺少name字段，使用默认值:', aiCase.name);
+          }
+          if (!aiCase.symptoms || (Array.isArray(aiCase.symptoms) && aiCase.symptoms.length === 0)) {
+            aiCase.symptoms = ['不适'];
+            console.warn('AI病例缺少symptoms字段，使用默认值');
+          }
           agent.currentCase = aiCase;
           agent.patient = new (require('../models/Patient'))();
           // 确保symptoms是数组（AI有时返回字符串）
@@ -300,19 +335,35 @@ router.post('/:id/chat-stream', async (req, res) => {
     let answer = '';
 
     if (llmService.isEnabled() && agent.currentCase && agent.patient) {
-      try {
-        answer = await llmService.answerMedicalQuestionStream(
-          question,
-          agent.patient,
-          agent.currentCase,
-          agent.conversationHistory,
-          (token, fullContent) => {
-            sendEvent('token', { token, full: fullContent });
+      // 最多重试2次（应对503等临时错误）
+      let lastError = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          answer = await llmService.answerMedicalQuestionStream(
+            question,
+            agent.patient,
+            agent.currentCase,
+            agent.conversationHistory,
+            (token, fullContent) => {
+              sendEvent('token', { token, full: fullContent });
+            }
+          );
+          lastError = null;
+          break; // 成功，跳出重试循环
+        } catch (e) {
+          lastError = e;
+          const is503 = (e.message || '').includes('503');
+          if (is503 && attempt < 2) {
+            console.warn(`LLM流式回答503，第${attempt + 1}次重试...`);
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+            continue;
           }
-        );
-      } catch (e) {
-        console.error('LLM流式回答失败:', e.message);
-        sendEvent('error', { message: e.message || 'AI回答失败' });
+          break; // 非503或最后一次，跳出
+        }
+      }
+      if (lastError) {
+        console.error('LLM流式回答失败:', lastError.message);
+        sendEvent('error', { message: lastError.message || 'AI回答失败' });
         res.end();
         return;
       }
@@ -407,6 +458,10 @@ router.post('/:id/evaluate', async (req, res) => {
     result: o.result
   }));
 
+  // 获取手术记录
+  const patientSurgeries = dataStore.getPatientSurgeries(req.params.id);
+  const completedSurgeries = patientSurgeries.filter(s => s.status === 'completed');
+
   // 获取病例信息（疾病案例数据）
   const caseInfo = agent.currentCase ? {
     name: agent.currentCase.name,
@@ -431,7 +486,8 @@ router.post('/:id/evaluate', async (req, res) => {
         examinationCosts: examinationCosts || 0,
         prescriptionCosts: prescriptionCosts || 0,
         questionCount: questionCount || 0,
-        conversationHistory: conversationHistory
+        conversationHistory: conversationHistory,
+        completedSurgeries: completedSurgeries
       });
 
       if (aiResult && aiResult.score !== undefined) {
@@ -455,6 +511,7 @@ router.post('/:id/evaluate', async (req, res) => {
             userDiagnosis: userDiagnosis || '未填写',
             recommended,
             scoreBreakdown: aiResult.scoreBreakdown || {},
+            errorPoints: aiResult.errorPoints || [],
             overallComment: aiResult.overallComment || null,
             costs: {
               examination: examinationCosts || 0,
@@ -506,71 +563,90 @@ router.post('/:id/evaluate', async (req, res) => {
   let scoreBreakdown = {};
 
   if (matchType === 'exact') {
-    score += 45;
-    scoreBreakdown.diagnosis = { score: 45, comment: '诊断完全正确' };
+    score += 40;
+    scoreBreakdown.diagnosis = { score: 40, comment: '诊断完全正确' };
   } else if (matchType === 'partial') {
-    score += 36;
-    scoreBreakdown.diagnosis = { score: 36, comment: '诊断基本正确' };
+    score += 32;
+    scoreBreakdown.diagnosis = { score: 32, comment: '诊断基本正确' };
   } else if (matchType === 'keyword') {
-    score += 22;
-    scoreBreakdown.diagnosis = { score: 22, comment: '诊断部分正确' };
+    score += 20;
+    scoreBreakdown.diagnosis = { score: 20, comment: '诊断部分正确' };
   } else {
     scoreBreakdown.diagnosis = { score: 0, comment: '诊断不正确' };
   }
 
   const examCount = totalExamCost > 0 ? Math.ceil(totalExamCost / 50) : 0;
   if (examCount === 0) {
-    score += 4;
-    scoreBreakdown.examination = { score: 4, cost: totalExamCost, comment: '未做任何检查' };
+    score += 3;
+    scoreBreakdown.examination = { score: 3, cost: totalExamCost, comment: '未做任何检查' };
   } else if (examCount <= 3) {
-    score += 20;
-    scoreBreakdown.examination = { score: 20, cost: totalExamCost, comment: '检查精简高效' };
+    score += 15;
+    scoreBreakdown.examination = { score: 15, cost: totalExamCost, comment: '检查精简高效' };
   } else if (examCount <= 6) {
-    score += 12;
-    scoreBreakdown.examination = { score: 12, cost: totalExamCost, comment: '检查项目偏多' };
+    score += 9;
+    scoreBreakdown.examination = { score: 9, cost: totalExamCost, comment: '检查项目偏多' };
   } else {
-    score += 4;
-    scoreBreakdown.examination = { score: 4, cost: totalExamCost, comment: '检查过度' };
+    score += 3;
+    scoreBreakdown.examination = { score: 3, cost: totalExamCost, comment: '检查过度' };
   }
 
   if (totalMedCost === 0) {
     score += 0;
     scoreBreakdown.medicine = { score: 0, cost: 0, comment: '未开药' };
   } else if (totalMedCost <= 50) {
-    score += 20;
-    scoreBreakdown.medicine = { score: 20, cost: totalMedCost, comment: '用药经济合理' };
+    score += 15;
+    scoreBreakdown.medicine = { score: 15, cost: totalMedCost, comment: '用药经济合理' };
   } else if (totalMedCost <= 100) {
-    score += 16;
-    scoreBreakdown.medicine = { score: 16, cost: totalMedCost, comment: '花费适中' };
+    score += 12;
+    scoreBreakdown.medicine = { score: 12, cost: totalMedCost, comment: '花费适中' };
   } else if (totalMedCost <= 200) {
-    score += 10;
-    scoreBreakdown.medicine = { score: 10, cost: totalMedCost, comment: '花费偏高' };
+    score += 8;
+    scoreBreakdown.medicine = { score: 8, cost: totalMedCost, comment: '花费偏高' };
   } else {
-    score += 4;
-    scoreBreakdown.medicine = { score: 4, cost: totalMedCost, comment: '花费过高' };
+    score += 3;
+    scoreBreakdown.medicine = { score: 3, cost: totalMedCost, comment: '花费过高' };
   }
 
   const qCount = questionCount || 0;
   let consultingScore = 0;
   let consultingComment = '';
   if (qCount >= 8) {
-    consultingScore = 15;
+    consultingScore = 10;
     consultingComment = '问诊详尽，信息收集全面';
   } else if (qCount >= 5) {
-    consultingScore = 12;
+    consultingScore = 8;
     consultingComment = '问诊充分，信息收集良好';
   } else if (qCount >= 3) {
-    consultingScore = 8;
+    consultingScore = 6;
     consultingComment = '问诊基本充分，建议多了解病史';
   } else if (qCount >= 1) {
-    consultingScore = 4;
+    consultingScore = 3;
     consultingComment = '问诊不足，建议增加问诊内容';
   } else {
     consultingScore = 0;
     consultingComment = '未进行问诊';
   }
   score += consultingScore;
-  scoreBreakdown.consultation = { score: consultingScore, maxScore: 15, questionCount: qCount, comment: consultingComment };
+  scoreBreakdown.consultation = { score: consultingScore, maxScore: 10, questionCount: qCount, comment: consultingComment };
+
+  // 手术评分（20分）
+  let surgeryScore = 0;
+  let surgeryComment = '';
+  if (completedSurgeries.length > 0) {
+    const hasOutcome = completedSurgeries.some(s => s.outcome && s.outcome.trim().length > 10);
+    if (hasOutcome) {
+      surgeryScore = 18;
+      surgeryComment = '完成手术且记录详细';
+    } else {
+      surgeryScore = 12;
+      surgeryComment = '完成手术但记录简略';
+    }
+  } else {
+    surgeryScore = 20;
+    surgeryComment = '无需手术处理';
+  }
+  score += surgeryScore;
+  scoreBreakdown.surgery = { score: surgeryScore, maxScore: 20, comment: surgeryComment };
 
   let efficiencyComment = '';
   if (score > 100) {
@@ -603,6 +679,7 @@ router.post('/:id/evaluate', async (req, res) => {
       userDiagnosis: userDiagnosis || '未填写',
       recommended,
       scoreBreakdown,
+      errorPoints: [],
       efficiencyComment: efficiencyComment || null,
       costs: {
         examination: totalExamCost,
@@ -614,6 +691,15 @@ router.post('/:id/evaluate', async (req, res) => {
         age: patient.age,
         gender: patient.gender
       } : null,
+      surgeries: completedSurgeries.map(s => ({
+        name: (s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知'),
+        typeLabel: s.typeLabel || s.type,
+        anesthesiaLabel: s.anesthesiaLabel || s.anesthesiaType,
+        outcome: s.outcome || '',
+        findings: s.findings || '',
+        complications: s.complications || '',
+        postOpNotes: s.postOpNotes || ''
+      })),
       aiScored: false
     }
   });
@@ -688,6 +774,10 @@ router.post('/:id/evaluate-stream', async (req, res) => {
     result: o.result
   }));
 
+  // 获取手术记录
+  const patientSurgeries = dataStore.getPatientSurgeries(req.params.id);
+  const completedSurgeries = patientSurgeries.filter(s => s.status === 'completed');
+
   // 获取病例信息
   const caseInfo = agent.currentCase ? {
     name: agent.currentCase.name,
@@ -706,58 +796,105 @@ router.post('/:id/evaluate-stream', async (req, res) => {
     // 尝试AI流式评分
     if (llmService.isEnabled()) {
       try {
-        // 构建患者基础信息块（与 LLMService.buildPatientContextBlock 一致）
-        const patientContextParts = [];
-        if (patient) {
-          if (patient.name) patientContextParts.push(`姓名：${patient.name}`);
-          if (patient.age) patientContextParts.push(`年龄：${patient.age}岁`);
-          if (patient.gender) patientContextParts.push(`性别：${patient.gender}`);
-        }
-        if (caseInfo) {
-          if (correctDiagnosis) patientContextParts.push(`疾病：${correctDiagnosis}`);
-          if (caseInfo.symptoms && caseInfo.symptoms.length > 0) {
-            patientContextParts.push(`症状：${caseInfo.symptoms.join('、')}`);
-          }
-          if (caseInfo.physicalSigns) {
-            const signs = [];
-            const ps = caseInfo.physicalSigns;
-            if (ps.temperature) signs.push(`体温${ps.temperature}℃`);
-            if (ps.bloodPressure) signs.push(`血压${ps.bloodPressure}`);
-            if (ps.heartRate) signs.push(`心率${ps.heartRate}次/分`);
-            if (ps.breathing) signs.push(`呼吸${ps.breathing}次/分`);
-            if (signs.length > 0) patientContextParts.push(`体征：${signs.join('、')}`);
-          }
-        }
-        const patientContext = patientContextParts.join('；');
+        // 使用统一的患者信息前缀格式（与所有其他AI调用一致，提高缓存命中率）
+        const patientInfo = patient ? { name: patient.name, age: patient.age, gender: patient.gender } : {};
+        const patientContext = llmService.buildPatientContextBlock(patientInfo, caseInfo || {}, completedExams, { conversationHistory, completedSurgeries });
 
         const symptoms = caseInfo && caseInfo.symptoms ? (Array.isArray(caseInfo.symptoms) ? caseInfo.symptoms.join('、') : caseInfo.symptoms) : '无';
         const physicalSignsStr = caseInfo && caseInfo.physicalSigns ? JSON.stringify(caseInfo.physicalSigns) : '无';
         const treatmentStr = caseInfo ? caseInfo.treatment || '无' : '无';
         const medicinesStr = caseInfo && caseInfo.medicines ? (Array.isArray(caseInfo.medicines) ? caseInfo.medicines.join('、') : caseInfo.medicines) : '无';
 
-        // 精简prompt，减少token消耗
-        const prompt = `患者：${patient ? `${patient.name}，${patient.age}岁，${patient.gender}` : '未知'}
-正确诊断：${correctDiagnosis}
-学生诊断：${userDiagnosis || '未填写'}
+
+        const prompt = `${patientContext}
+
+【病例标准答案】
+疾病：${correctDiagnosis}
 症状：${symptoms}
+体格检查：${physicalSignsStr}
 推荐治疗：${treatmentStr}
 推荐药品：${medicinesStr}
+
+【学生作答】
+学生诊断：${userDiagnosis || '未填写'}
 学生用药：${(userMedicines || []).join('、') || '无'}
 学生检查：${(userExaminations || []).join('、') || '无'}
 检查费用：¥${examinationCosts || 0} 药品费用：¥${prescriptionCosts || 0} 问诊数：${questionCount || 0}
-问诊记录：${conversationHistory.length > 0 ? conversationHistory.slice(-6).map(h => `${h.role === 'doctor' ? '医' : '患'}：${(h.content || '').slice(0, 50)}`).join('|') : '无'}
 
-评分标准（总分100）：诊断45分（完全正确45/部分30-44/相关15-29/错误0-14）、检查20分、用药20分、问诊15分。
+【检查结果详情】
+${(completedExams || []).map(e => `${e.typeName || e.type}（${e.bodyPart || ''}）：${e.result || '无结果'}`).join('\n') || '无'}
 
-只返回JSON，comment限15字内：
-{"score":总分,"scoreBreakdown":{"diagnosis":{"score":X,"comment":"点评"},"examination":{"score":X,"comment":"点评"},"medicine":{"score":X,"comment":"点评"},"consultation":{"score":X,"comment":"点评"}},"overallComment":"总体评价50字内","matchType":"exact/partial/keyword/wrong","diagnosisMatch":true/false}`;
+【手术记录】
+${(completedSurgeries || []).length > 0 ? (completedSurgeries || []).map(s => `${(s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知')}：${s.outcome || '无记录'}`).join('\n') : '未进行手术'}
+
+请从以下5个维度评分（总分100分），并逐项给出详细评价：
+
+1. 诊断准确性（40分）：
+   - 完全正确：40分（诊断名称与正确诊断完全一致或为等价表述）
+   - 部分正确：28-39分（诊断方向正确，但不够精确，如只诊断到大类而未细分）
+   - 错误但相关：14-27分（诊断与正确诊断有某种关联，如同系统疾病但具体错误）
+   - 完全错误：0-13分（诊断方向完全偏离）
+
+2. 检查合理性（15分）：
+   - 检查项目选择合理、覆盖必要检查、无过度检查：13-15分
+   - 基本合理但有1-2项遗漏或多余：9-12分
+   - 检查明显过多或过少：5-8分
+   - 检查不合理或完全缺失：0-4分
+
+3. 用药合理性（15分）：
+   - 用药对症、类别正确、无明显禁忌：13-15分
+   - 基本合理但有小问题（如个别药物可优化）：9-12分
+   - 有明显问题（如类别错误、缺少必要药物）：5-8分
+   - 用药错误或完全未开药：0-4分
+
+4. 问诊质量（10分）：
+   - 问诊全面、围绕主诉展开、鉴别诊断思路清晰：9-10分
+   - 基本全面但遗漏部分关键问题：6-8分
+   - 有明显遗漏（如未问过敏史、未问既往史）：3-5分
+   - 问诊严重不足或跑题：0-2分
+
+5. 手术处理（20分）：
+   - 如病例需要手术：完成手术且记录详细（手术经过、术中发现等）：18-20分
+   - 完成手术但记录简略：12-17分
+   - 应做手术但未做：0-5分
+   - 如病例不需要手术：给满分20分
+
+返回严格JSON格式，不要输出任何多余文字：
+{
+  "score": 总分(0-100整数),
+  "scoreBreakdown": {
+    "diagnosis": {"score": 分数, "comment": "诊断评价（50-100字，详细分析诊断正确性、思路是否清晰、鉴别诊断是否考虑）"},
+    "examination": {"score": 分数, "comment": "检查评价（50-100字，分析检查项目选择是否合理、是否有遗漏或过度、费用是否经济）"},
+    "medicine": {"score": 分数, "comment": "用药评价（50-100字，分析药物选择是否对症、剂量是否合理、是否有配伍禁忌、费用是否经济）"},
+    "consultation": {"score": 分数, "comment": "问诊评价（50-100字，分析问诊是否全面、是否抓住重点、鉴别诊断思路是否清晰）"},
+    "surgery": {"score": 分数, "comment": "手术评价（50-100字，分析手术决策是否正确、操作是否规范、记录是否详细）"}
+  },
+  "errorPoints": [
+    {
+      "category": "诊断/检查/用药/问诊/手术",
+      "error": "具体描述学生犯了什么错（30-50字）",
+      "correct": "正确做法是什么（50-100字，详细解释为什么这样做更合理）"
+    }
+  ],
+  "overallComment": "总体评价（400-500字）：首先肯定学生做得好的方面，然后详细分析主要问题和不足，接着给出具体的改进建议和学习方向，最后给出鼓励和总结。内容要专业、详细、有建设性。",
+  "matchType": "exact/partial/keyword/wrong",
+  "diagnosisMatch": true或false
+}
+
+注意：
+- overallComment 必须在400-500字左右，内容要专业详细有建设性
+- scoreBreakdown 中每个维度的 comment 要在50-100字，详细分析该维度表现
+- errorPoints 数组：只列出学生犯错的地方，做对的不列。如果没有错误则返回空数组
+- 每个errorPoint必须明确指出"学生做了什么"和"应该怎么做"，并解释原因
+- 分数必须严格在各维度满分范围内
+- 只返回JSON，不要有任何其他文字`;
 
         const messages = [
           { role: 'system', content: '你是一个医学教育评估专家，只返回JSON格式的评分结果。' },
           { role: 'user', content: prompt }
         ];
 
-        const streamResult = await llmService.chatStream(messages, 0.3, 1500);
+        const streamResult = await llmService.chatStream(messages, 0.3);
 
         if (streamResult.success) {
           let fullContent = '';
@@ -814,7 +951,7 @@ router.post('/:id/evaluate-stream', async (req, res) => {
                     if (overallCommentMatch) parsed.overallComment = overallCommentMatch[1];
                     // 提取分项评分
                     parsed.scoreBreakdown = {};
-                    const dims = ['diagnosis', 'examination', 'medicine', 'consultation'];
+                    const dims = ['diagnosis', 'examination', 'medicine', 'consultation', 'surgery'];
                     for (const dim of dims) {
                       const dimRegex = new RegExp(`"${dim}"\\s*:\\s*\\{[^}]*"score"\\s*:\\s*(\\d+)[^}]*"comment"\\s*:\\s*"([^"]*)"`, 'g');
                       const dimMatch = dimRegex.exec(jsonStr);
@@ -844,6 +981,7 @@ router.post('/:id/evaluate-stream', async (req, res) => {
                       userDiagnosis: userDiagnosis || '未填写',
                       recommended,
                       scoreBreakdown: parsed.scoreBreakdown || {},
+                      errorPoints: parsed.errorPoints || [],
                       overallComment: parsed.overallComment || null,
                       costs: {
                         examination: examinationCosts || 0,
@@ -855,6 +993,15 @@ router.post('/:id/evaluate-stream', async (req, res) => {
                         age: patient.age,
                         gender: patient.gender
                       } : null,
+                      surgeries: completedSurgeries.map(s => ({
+                        name: (s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知'),
+                        typeLabel: s.typeLabel || s.type,
+                        anesthesiaLabel: s.anesthesiaLabel || s.anesthesiaType,
+                        outcome: s.outcome || '',
+                        findings: s.findings || '',
+                        complications: s.complications || '',
+                        postOpNotes: s.postOpNotes || ''
+                      })),
                       aiScored: true
                     };
                     aiScored = true;
@@ -911,71 +1058,91 @@ router.post('/:id/evaluate-stream', async (req, res) => {
       let scoreBreakdown = {};
 
       if (matchType === 'exact') {
-        score += 45;
-        scoreBreakdown.diagnosis = { score: 45, comment: '诊断完全正确' };
+        score += 40;
+        scoreBreakdown.diagnosis = { score: 40, comment: '诊断完全正确' };
       } else if (matchType === 'partial') {
-        score += 36;
-        scoreBreakdown.diagnosis = { score: 36, comment: '诊断基本正确' };
+        score += 32;
+        scoreBreakdown.diagnosis = { score: 32, comment: '诊断基本正确' };
       } else if (matchType === 'keyword') {
-        score += 22;
-        scoreBreakdown.diagnosis = { score: 22, comment: '诊断部分正确' };
+        score += 20;
+        scoreBreakdown.diagnosis = { score: 20, comment: '诊断部分正确' };
       } else {
         scoreBreakdown.diagnosis = { score: 0, comment: '诊断不正确' };
       }
 
       const examCount = totalExamCost > 0 ? Math.ceil(totalExamCost / 50) : 0;
       if (examCount === 0) {
-        score += 4;
-        scoreBreakdown.examination = { score: 4, cost: totalExamCost, comment: '未做任何检查' };
+        score += 3;
+        scoreBreakdown.examination = { score: 3, cost: totalExamCost, comment: '未做任何检查' };
       } else if (examCount <= 3) {
-        score += 20;
-        scoreBreakdown.examination = { score: 20, cost: totalExamCost, comment: '检查精简高效' };
+        score += 15;
+        scoreBreakdown.examination = { score: 15, cost: totalExamCost, comment: '检查精简高效' };
       } else if (examCount <= 6) {
-        score += 12;
-        scoreBreakdown.examination = { score: 12, cost: totalExamCost, comment: '检查项目偏多' };
+        score += 9;
+        scoreBreakdown.examination = { score: 9, cost: totalExamCost, comment: '检查项目偏多' };
       } else {
-        score += 4;
-        scoreBreakdown.examination = { score: 4, cost: totalExamCost, comment: '检查过度' };
+        score += 3;
+        scoreBreakdown.examination = { score: 3, cost: totalExamCost, comment: '检查过度' };
       }
 
       if (totalMedCost === 0) {
         score += 0;
         scoreBreakdown.medicine = { score: 0, cost: 0, comment: '未开药' };
       } else if (totalMedCost <= 50) {
-        score += 20;
-        scoreBreakdown.medicine = { score: 20, cost: totalMedCost, comment: '用药经济合理' };
+        score += 15;
+        scoreBreakdown.medicine = { score: 15, cost: totalMedCost, comment: '用药经济合理' };
       } else if (totalMedCost <= 100) {
-        score += 16;
-        scoreBreakdown.medicine = { score: 16, cost: totalMedCost, comment: '花费适中' };
+        score += 12;
+        scoreBreakdown.medicine = { score: 12, cost: totalMedCost, comment: '花费适中' };
       } else if (totalMedCost <= 200) {
-        score += 10;
-        scoreBreakdown.medicine = { score: 10, cost: totalMedCost, comment: '花费偏高' };
+        score += 8;
+        scoreBreakdown.medicine = { score: 8, cost: totalMedCost, comment: '花费偏高' };
       } else {
-        score += 4;
-        scoreBreakdown.medicine = { score: 4, cost: totalMedCost, comment: '花费过高' };
+        score += 3;
+        scoreBreakdown.medicine = { score: 3, cost: totalMedCost, comment: '花费过高' };
       }
 
       const qCount = questionCount || 0;
       let consultingScore = 0;
       let consultingComment = '';
       if (qCount >= 8) {
-        consultingScore = 15;
+        consultingScore = 10;
         consultingComment = '问诊详尽，信息收集全面';
       } else if (qCount >= 5) {
-        consultingScore = 12;
+        consultingScore = 8;
         consultingComment = '问诊充分，信息收集良好';
       } else if (qCount >= 3) {
-        consultingScore = 8;
+        consultingScore = 6;
         consultingComment = '问诊基本充分，建议多了解病史';
       } else if (qCount >= 1) {
-        consultingScore = 4;
+        consultingScore = 3;
         consultingComment = '问诊不足，建议增加问诊内容';
       } else {
         consultingScore = 0;
         consultingComment = '未进行问诊';
       }
       score += consultingScore;
-      scoreBreakdown.consultation = { score: consultingScore, maxScore: 15, questionCount: qCount, comment: consultingComment };
+      scoreBreakdown.consultation = { score: consultingScore, maxScore: 10, questionCount: qCount, comment: consultingComment };
+
+      // 手术评分（20分）
+      let surgeryScore = 0;
+      let surgeryComment = '';
+      if (completedSurgeries.length > 0) {
+        const hasOutcome = completedSurgeries.some(s => s.outcome && s.outcome.trim().length > 10);
+        if (hasOutcome) {
+          surgeryScore = 18;
+          surgeryComment = '完成手术且记录详细';
+        } else {
+          surgeryScore = 12;
+          surgeryComment = '完成手术但记录简略';
+        }
+      } else {
+        // 没有手术记录，给满分（不是所有病例都需要手术）
+        surgeryScore = 20;
+        surgeryComment = '无需手术处理';
+      }
+      score += surgeryScore;
+      scoreBreakdown.surgery = { score: surgeryScore, maxScore: 20, comment: surgeryComment };
 
       if (score > 100) score = 100;
       if (score < 0) score = 0;
@@ -998,6 +1165,7 @@ router.post('/:id/evaluate-stream', async (req, res) => {
         userDiagnosis: userDiagnosis || '未填写',
         recommended,
         scoreBreakdown,
+        errorPoints: [],
         overallComment: generateLocalComment(matchType, score, consultingComment, totalExamCost, totalMedCost),
         costs: {
           examination: totalExamCost,
@@ -1009,6 +1177,15 @@ router.post('/:id/evaluate-stream', async (req, res) => {
           age: patient.age,
           gender: patient.gender
         } : null,
+        surgeries: completedSurgeries.map(s => ({
+          name: (s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知'),
+          typeLabel: s.typeLabel || s.type,
+          anesthesiaLabel: s.anesthesiaLabel || s.anesthesiaType,
+          outcome: s.outcome || '',
+          findings: s.findings || '',
+          complications: s.complications || '',
+          postOpNotes: s.postOpNotes || ''
+        })),
         aiScored: false
       };
     }

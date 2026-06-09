@@ -466,6 +466,18 @@
                                         <input type="date" id="mrSignatureDate" class="date-input">
                                     </div>
                                 </div>
+
+                                <!-- 会诊结果区域 -->
+                                <div id="recordConsultationSection" class="record-section" style="display: none;">
+                                    <label class="section-label">🩺 会诊记录</label>
+                                    <div id="recordConsultationResults" style="font-size:13px; color:#555;"></div>
+                                </div>
+
+                                <!-- 手术记录区域 -->
+                                <div id="recordSurgerySection" class="record-section" style="display: none;">
+                                    <label class="section-label">🔪 手术记录</label>
+                                    <div id="recordSurgeryResults" style="font-size:13px; color:#555;"></div>
+                                </div>
                             </div>
 
                             <!-- 评分详情区域（有评分时显示） -->
@@ -524,6 +536,11 @@
                                 <div class="score-panel-comment" id="scorePanelComment" style="display: none;">
                                     <h5>💬 总体评价</h5>
                                     <p id="overallCommentText"></p>
+                                </div>
+
+                                <!-- 错误分析 -->
+                                <div class="score-panel-error-points" id="scorePanelErrorPoints" style="display: none;">
+                                    <!-- 动态生成 -->
                                 </div>
                             </div>
                         </div>

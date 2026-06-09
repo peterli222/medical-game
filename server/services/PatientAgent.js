@@ -289,7 +289,16 @@ class PatientAgent {
       const availableExaminations = examInfo.join('、');
 
       const aiCase = await llmService.generateCase(availableMedicines, availableExaminations, recentCases, department);
-      if (aiCase && aiCase.name && aiCase.symptoms) {
+      if (aiCase) {
+        // 确保必需字段存在（AI可能返回部分数据）
+        if (!aiCase.name) {
+          aiCase.name = '患者' + Math.floor(Math.random() * 1000);
+          console.warn('AI病例(非流式)缺少name字段，使用默认值:', aiCase.name);
+        }
+        if (!aiCase.symptoms || (Array.isArray(aiCase.symptoms) && aiCase.symptoms.length === 0)) {
+          aiCase.symptoms = ['不适'];
+          console.warn('AI病例(非流式)缺少symptoms字段，使用默认值');
+        }
         this.currentCase = aiCase;
         this.patient = new Patient();
 
@@ -725,8 +734,17 @@ class PatientAgent {
   // 获取正确诊断
   getCorrectDiagnosis() {
     if (!this.currentCase) return '';
-    // AI生成的病例用disease字段，本地病例用name字段
-    return this.currentCase.disease || this.currentCase.name || '';
+    // AI生成的病例：name是患者姓名，disease才是疾病名称
+    // 本地病例：name就是疾病名称
+    // 判断是否为AI生成的病例：有diseaseDescription或有disease字段（且与name不同）
+    const isAICase = !!this.currentCase.diseaseDescription ||
+      (!!this.currentCase.disease && this.currentCase.disease !== this.currentCase.name);
+    if (isAICase) {
+      // AI病例：disease是疾病名，不能fallback到name（那是患者姓名）
+      return this.currentCase.disease || this.currentCase.diseaseDescription || '';
+    }
+    // 本地病例：name就是疾病名
+    return this.currentCase.name || '';
   }
 
   // 获取推荐治疗

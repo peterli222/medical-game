@@ -134,11 +134,18 @@ router.post('/:id/execute', async (req, res) => {
     if (llmService.isEnabled() && agent.currentCase) {
       try {
         const patientInfo = patient ? { name: patient.name, age: patient.age, gender: patient.gender } : { name: '患者', age: 30, gender };
+        // 获取该患者已完成的检查结果
+        const completedExams = dataStore.getPatientExaminationOrders(order.patientId)
+          .filter(o => o.status === 'completed' && o.id !== req.params.id);
+        const conversationHistory = agent.conversationHistory || [];
+        const completedSurgeries = dataStore.getPatientSurgeries(order.patientId).filter(s => s.status === 'completed');
         const aiResult = await llmService.generateExaminationDescription(
-          order.examinationType,
+          order.examinationName || order.examinationType,
           order.bodyPart,
           patientInfo,
-          agent.currentCase
+          agent.currentCase,
+          completedExams,
+          { conversationHistory, completedSurgeries }
         );
         if (aiResult && aiResult.report) {
           result.aiDescription = aiResult.report;
@@ -204,14 +211,21 @@ router.post('/:id/execute-stream', async (req, res) => {
     if (llmService.isEnabled() && agent.currentCase) {
       try {
         const patientInfo = patient ? { name: patient.name, age: patient.age, gender: patient.gender } : { name: '患者', age: 30, gender };
+        // 获取该患者已完成的检查结果
+        const completedExams = dataStore.getPatientExaminationOrders(order.patientId)
+          .filter(o => o.status === 'completed' && o.id !== req.params.id);
+        const conversationHistory = agent.conversationHistory || [];
+        const completedSurgeries = dataStore.getPatientSurgeries(order.patientId).filter(s => s.status === 'completed');
         const aiResult = await llmService.generateExaminationDescriptionStream(
-          order.examinationType,
+          order.examinationName || order.examinationType,
           order.bodyPart,
           patientInfo,
           agent.currentCase,
           (token, fullContent) => {
             sendEvent('token', { token, full: fullContent });
-          }
+          },
+          completedExams,
+          { conversationHistory, completedSurgeries }
         );
         if (aiResult && aiResult.report) {
           aiDescription = aiResult.report;

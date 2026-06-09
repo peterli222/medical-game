@@ -100,6 +100,11 @@ class Surgery {
     this.startTime = data.startTime || null;
     this.endTime = data.endTime || null;
     this.notes = data.notes || '';
+    // 手术结果字段
+    this.outcome = data.outcome || '';          // 手术经过/结果
+    this.findings = data.findings || '';        // 术中发现
+    this.complications = data.complications || ''; // 并发症
+    this.postOpNotes = data.postOpNotes || '';  // 术后处理
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
   }
@@ -127,6 +132,10 @@ class Surgery {
       startTime: this.startTime,
       endTime: this.endTime,
       notes: this.notes,
+      outcome: this.outcome,
+      findings: this.findings,
+      complications: this.complications,
+      postOpNotes: this.postOpNotes,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

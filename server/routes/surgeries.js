@@ -144,14 +144,22 @@ router.post('/:id/ai-arrange', async (req, res) => {
 
     sendEvent('progress', { message: 'AI正在分析患者信息并安排手术方案...' });
 
+    // 使用统一的患者信息前缀格式
+    const agent = dataStore.getPatientAgent(surgery.patientId);
+    const conversationHistory = (agent && agent.conversationHistory) ? agent.conversationHistory : [];
+    const completedExams = dataStore.getPatientExaminationOrders(surgery.patientId)
+      .filter(o => o.status === 'completed');
+    const completedSurgeries = dataStore.getPatientSurgeries(surgery.patientId)
+      .filter(s => s.status === 'completed' && s.id !== req.params.id);
+    const patientInfo = patient ? { name: patient.name, age: patient.age, gender: patient.gender } : {};
+    const caseInfo = agent && agent.currentCase ? agent.currentCase : {};
+    const patientContext = llmService.buildPatientContextBlock(patientInfo, caseInfo, completedExams, { conversationHistory, completedSurgeries });
+
     const prompt = `你是一位资深外科主任，请根据以下信息为患者安排手术方案。
 
-患者信息：
-- 姓名：${patient ? patient.name : '未知'}
-- 年龄：${patient ? patient.age : '未知'}
-- 性别：${patient ? patient.gender : '未知'}
-- 当前诊断：${diagnosis}
-- 手术名称：${surgery.name || surgery.surgeryName || '待定'}
+${patientContext}
+
+手术名称：${surgery.name || surgery.surgeryName || '待定'}
 
 请以JSON格式返回手术安排方案，包含以下字段：
 {
