@@ -934,6 +934,7 @@ ${recentCasesLimit.length > 0 ? `【重要】最近已生成的疾病（严禁�
       '过敏原检测': '生成过敏原检测报告。包含：血清特异性IgE检测结果，列出常见过敏原(尘螨、花粉、食物等)的IgE水平和分级(0-6级)。',
       '宫颈涂片': '生成TCT报告。包含：标本满意度、鳞状上皮细胞分析、腺上皮细胞分析、微生物检测、诊断意见(NILM/ASC-US/LSIL/HSIL等)。',
       'HPV检测': '生成HPV检测报告。包含：HPV分型结果，高危型(16/18/31/33/35/39/45/51/52/56/58/59/66/68)和低危型(6/11等)。',
+      '体格检查': '你是资深临床医生，正在为患者做系统体格检查。根据患者的主诉、症状和疑似诊断，自动生成所有相关的查体结果。\n\n要求：\n1. 先写【生命体征】：体温、脉搏、呼吸、血压（根据病情合理设定数值）\n2. 再写【一般情况】：神志、面容、营养、体位\n3. 然后根据病情重点展开相关系统的查体，例如：\n   - 肛肠疾病→必须详细写肛门视诊、肛门直肠指检（肛缘、痔核、肛裂、瘘管、直肠肿物、前列腺等）\n   - 腹部疾病→详细写腹部视触叩听（压痛、反跳痛、包块、肝脾等）\n   - 心肺疾病→详细写心脏听诊、肺部听诊\n   - 骨科疾病→详细写脊柱、关节活动度、压痛等\n   - 神经系统→详细写颅神经、肌力、感觉、反射、病理征\n   - 妇科→详细写外阴、阴道、宫颈、子宫附件\n4. 最后写【专科查体小结】：总结阳性发现，提示可能的诊断\n\n格式要求：按系统分段，每个查体项目写具体所见（正常和异常都要写），异常用加粗标注。要像真实的住院病历体格检查记录一样专业详细。',
     };
 
     // 影像学检查
@@ -1104,7 +1105,17 @@ ${examSpecificPrompt}
     ];
 
     const streamResult = await this.chatStream(messages, 0.7, 1500);
-    if (!streamResult.success) return null;
+    if (!streamResult.success) {
+      // 流式失败，回退到非流式调用
+      console.log('检查报告流式失败，回退到非流式:', streamResult.error);
+      const result = await this.chat(messages, 0.7);
+      if (result.success) {
+        let content = this.cleanThinkingTags(result.content);
+        content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        return { report: content, _usage: result.usage || null };
+      }
+      return null;
+    }
 
     let fullContent = '';
     let streamUsage = null;
@@ -1135,11 +1146,29 @@ ${examSpecificPrompt}
         }
       });
 
-      stream.on('end', () => {
+      stream.on('end', async () => {
         fullContent = this.cleanThinkingTags(fullContent);
         // 清理可能的markdown代码块
         fullContent = fullContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        
+
+        // 如果流式没有返回任何内容，回退到非流式
+        if (!fullContent || fullContent.trim() === '') {
+          console.log('检查报告流式返回空内容，回退到非流式');
+          try {
+            const result = await this.chat(messages, 0.7);
+            if (result.success) {
+              let content = this.cleanThinkingTags(result.content);
+              content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+              // 非流式也需要通过onToken回调更新前端
+              if (onToken && content) onToken(content, content);
+              resolve({ report: content, _usage: result.usage || null });
+              return;
+            }
+          } catch (e) {
+            console.error('检查报告非流式回退失败:', e.message);
+          }
+        }
+
         // 尝试解析JSON（兼容旧格式）
         const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -1151,7 +1180,7 @@ ${examSpecificPrompt}
             // JSON解析失败，直接使用内容
           }
         }
-        
+
         // 直接返回内容作为报告
         resolve({ report: fullContent, _usage: streamUsage });
       });

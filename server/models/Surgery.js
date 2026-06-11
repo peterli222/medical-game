@@ -51,6 +51,28 @@ const SURGERY_DATABASE = [
   // 口腔科
   { id: 'wisdom_tooth_extraction', name: '智齿拔除术', department: '口腔科', duration: 30, riskLevel: 'low' },
   { id: 'jaw_fracture_fixation', name: '颌骨骨折固定术', department: '口腔科', duration: 120, riskLevel: 'medium' },
+  // 探查型手术/检查
+  { id: 'anoscopy', name: '肛门镜检查', department: '肛肠科', duration: 15, riskLevel: 'low', isExploratory: true },
+  { id: 'digital_rectal_exam', name: '肛门指检', department: '肛肠科', duration: 10, riskLevel: 'low', isExploratory: true },
+  { id: 'proctoscopy', name: '直肠镜检查', department: '肛肠科', duration: 20, riskLevel: 'low', isExploratory: true },
+  { id: 'colonoscopy', name: '结肠镜检查', department: '消化内科', duration: 45, riskLevel: 'low', isExploratory: true },
+  { id: 'gastroscopy', name: '胃镜检查', department: '消化内科', duration: 30, riskLevel: 'low', isExploratory: true },
+  { id: 'laparoscopic_exploration', name: '腹腔镜探查术', department: '普通外科', duration: 90, riskLevel: 'medium', isExploratory: true },
+  { id: 'thoracoscopic_exploration', name: '胸腔镜探查术', department: '心胸外科', duration: 90, riskLevel: 'medium', isExploratory: true },
+  { id: 'arthroscopic_exploration', name: '关节镜探查术', department: '骨科', duration: 60, riskLevel: 'low', isExploratory: true },
+  { id: 'hysteroscopy', name: '宫腔镜检查', department: '妇产科', duration: 30, riskLevel: 'low', isExploratory: true },
+  { id: 'bronchoscopy', name: '支气管镜检查', department: '呼吸内科', duration: 30, riskLevel: 'low', isExploratory: true },
+  { id: 'cystoscopy_exam', name: '膀胱镜探查', department: '泌尿外科', duration: 20, riskLevel: 'low', isExploratory: true },
+  { id: 'laryngoscopy', name: '喉镜检查', department: '耳鼻喉科', duration: 20, riskLevel: 'low', isExploratory: true },
+  { id: 'otoscopy', name: '耳镜检查', department: '耳鼻喉科', duration: 10, riskLevel: 'low', isExploratory: true },
+  { id: 'nasal_endoscopy', name: '鼻内镜检查', department: '耳鼻喉科', duration: 20, riskLevel: 'low', isExploratory: true },
+  { id: 'fundoscopy', name: '眼底镜检查', department: '眼科', duration: 15, riskLevel: 'low', isExploratory: true },
+  { id: 'skin_biopsy', name: '皮肤活检', department: '皮肤科', duration: 20, riskLevel: 'low', isExploratory: true },
+  { id: 'bone_marrow_biopsy', name: '骨髓穿刺活检', department: '血液科', duration: 30, riskLevel: 'medium', isExploratory: true },
+  { id: 'liver_biopsy', name: '肝脏穿刺活检', department: '消化内科', duration: 30, riskLevel: 'medium', isExploratory: true },
+  { id: 'kidney_biopsy', name: '肾脏穿刺活检', department: '肾内科', duration: 30, riskLevel: 'medium', isExploratory: true },
+  { id: 'thyroid_biopsy', name: '甲状腺穿刺活检', department: '内分泌科', duration: 20, riskLevel: 'low', isExploratory: true },
+  { id: 'lymph_node_biopsy', name: '淋巴结活检', department: '血液科', duration: 30, riskLevel: 'low', isExploratory: true },
 ];
 
 // 手术类型
@@ -58,6 +80,7 @@ const SURGERY_TYPES = {
   emergency: '急诊手术',
   outpatient: '门诊手术',
   elective: '择期手术',
+  exploratory: '探查手术',
 };
 
 // 麻醉类型
@@ -105,6 +128,11 @@ class Surgery {
     this.findings = data.findings || '';        // 术中发现
     this.complications = data.complications || ''; // 并发症
     this.postOpNotes = data.postOpNotes || '';  // 术后处理
+    // 探查型手术专用字段
+    this.examinationResult = data.examinationResult || ''; // 检查结果/所见
+    this.specialistOpinion = data.specialistOpinion || ''; // 专科医生意见
+    this.diagnosisConclusion = data.diagnosisConclusion || ''; // 诊断结论
+    this.recommendedActions = data.recommendedActions || ''; // 建议后续处理
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
   }
@@ -136,6 +164,10 @@ class Surgery {
       findings: this.findings,
       complications: this.complications,
       postOpNotes: this.postOpNotes,
+      examinationResult: this.examinationResult,
+      specialistOpinion: this.specialistOpinion,
+      diagnosisConclusion: this.diagnosisConclusion,
+      recommendedActions: this.recommendedActions,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

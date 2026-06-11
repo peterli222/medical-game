@@ -3,54 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>杏林问诊 - 医疗模拟系统</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
-    <link rel="stylesheet" href="styles.css?v=20260530ee">
+    <title>门诊医生工作站 - 杏林医院HIS系统</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏥</text></svg>">
+    <link rel="stylesheet" href="styles.css?v=20260610_his2">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="app">
-        <!-- 顶部导航 -->
-        <header class="header">
-            <div class="logo">
-                <div class="logo-icon-wrapper">
-                    <span class="logo-icon">🩺</span>
-                </div>
-                <div class="logo-text">
-                    <h1>杏林问诊</h1>
-                    <span class="logo-subtitle">Medical Consultation Simulator</span>
+    <!-- 顶部系统栏 -->
+    <header class="sys-header">
+        <div class="sys-header-left">
+            <div class="hospital-logo">
+                <span class="hospital-icon">🏥</span>
+                <div class="hospital-info">
+                    <h1>杏林医院信息系统</h1>
+                    <span class="sys-name">HIS - 门诊医生工作站</span>
                 </div>
             </div>
-            <nav class="nav-tabs">
-                <button class="nav-tab active" data-tab="consultation">
-                    <span class="tab-icon">👨‍⚕️</span>
-                    <span>问诊</span>
-                </button>
-                <button class="nav-tab" data-tab="examination">
-                    <span class="tab-icon">🔬</span>
-                    <span>检查</span>
-                </button>
-                <button class="nav-tab" data-tab="prescription">
-                    <span class="tab-icon">💊</span>
-                    <span>开药</span>
-                </button>
-                <button class="nav-tab" data-tab="medical-record">
-                    <span class="tab-icon">📋</span>
-                    <span>病历</span>
-                </button>
-                <button class="nav-tab" data-tab="surgery">
-                    <span class="tab-icon">🔪</span>
-                    <span>手术</span>
-                </button>
-                <button class="nav-tab" data-tab="consultation-request">
-                    <span class="tab-icon">🤝</span>
-                    <span>会诊</span>
-                </button>
-            </nav>
-            <div class="header-actions">
-                <select id="departmentSelect" class="btn-department">
+        </div>
+        <div class="sys-header-center">
+            <div class="doctor-info">
+                <span class="doctor-avatar">👨‍⚕️</span>
+                <div class="doctor-detail">
+                    <span class="doctor-name" id="doctorName">张医生</span>
+                    <span class="doctor-dept" id="doctorDept">内科门诊</span>
+                </div>
+            </div>
+        </div>
+        <div class="sys-header-right">
+            <div class="sys-datetime">
+                <span class="sys-date" id="sysDate"></span>
+                <span class="sys-time" id="sysTime"></span>
+            </div>
+            <div class="sys-actions">
+                <select id="departmentSelect" class="sys-select" title="切换科室">
                     <option value="">全部科室</option>
-                    <option value="内科">内科</option>
+                    <option value="内科" selected>内科</option>
                     <option value="外科">外科</option>
                     <option value="妇产科">妇产科</option>
                     <option value="儿科">儿科</option>
@@ -68,540 +55,574 @@
                     <option value="急诊科">急诊科</option>
                     <option value="全科">全科</option>
                 </select>
-                <button id="settingsBtn" class="btn btn-settings" title="AI设置">
-                    <span>⚙️</span>
+                <button id="settingsBtn" class="sys-btn" title="系统设置">⚙️ 设置</button>
+                <button id="resetBtn" class="sys-btn" title="重置系统">🔄 重置</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主体布局 -->
+    <div class="main-layout">
+        <!-- 左侧导航栏 -->
+        <nav class="sidebar">
+            <div class="sidebar-menu">
+                <button class="menu-item active" data-tab="consultation">
+                    <span class="menu-icon">📋</span>
+                    <span class="menu-text">门诊问诊</span>
+                    <span class="menu-badge" id="consultBadge" style="display:none">!</span>
                 </button>
-                <button id="endConsultationBtn" class="btn btn-success" disabled>
-                    <span>✅</span> 结束诊疗
+                <button class="menu-item" data-tab="examination">
+                    <span class="menu-icon">🔬</span>
+                    <span class="menu-text">检查检验</span>
                 </button>
-                <button id="newPatientBtn" class="btn btn-primary">
-                    <span>🔄</span> 新患者
+                <button class="menu-item" data-tab="prescription">
+                    <span class="menu-icon">💊</span>
+                    <span class="menu-text">处方管理</span>
                 </button>
-                <button id="resetBtn" class="btn btn-secondary">
-                    <span>🗑️</span> 重置
+                <button class="menu-item" data-tab="medical-record">
+                    <span class="menu-icon">📝</span>
+                    <span class="menu-text">电子病历</span>
+                </button>
+                <button class="menu-item" data-tab="surgery">
+                    <span class="menu-icon">🔪</span>
+                    <span class="menu-text">手术管理</span>
+                </button>
+                <button class="menu-item" data-tab="consultation-request">
+                    <span class="menu-icon">🤝</span>
+                    <span class="menu-text">会诊申请</span>
                 </button>
             </div>
-        </header>
+            <div class="sidebar-footer">
+                <button id="newPatientBtn" class="sidebar-btn primary">
+                    <span>➕</span> 新患者接诊
+                </button>
+                <button id="endConsultationBtn" class="sidebar-btn success" disabled>
+                    <span>✅</span> 结束诊疗
+                </button>
+            </div>
+        </nav>
+
+        <!-- 左侧患者信息面板 -->
+        <aside class="patient-panel">
+            <div class="panel-header">
+                <h3>当前患者</h3>
+                <span class="patient-status" id="patientStatus">未接诊</span>
+            </div>
+            <div id="patientInfo" class="patient-info-content">
+                <div class="empty-state">
+                    <span class="empty-icon">👤</span>
+                    <p>暂无患者</p>
+                    <p class="empty-hint">点击"新患者接诊"开始</p>
+                </div>
+            </div>
+        </aside>
 
         <!-- 主内容区 -->
-        <main class="main-content">
-            <!-- 患者信息栏 -->
-            <aside class="patient-info-panel">
-                <div class="panel-header">
-                    <h3>患者信息</h3>
-                </div>
-                <div id="patientInfo" class="patient-info-content">
-                    <div class="empty-state">
-                        <span class="empty-icon">👤</span>
-                        <p>暂无患者</p>
-                        <p class="empty-hint">点击"新患者"开始问诊</p>
+        <main class="content-main">
+            <!-- 问诊标签页 -->
+            <div id="consultationTab" class="tab-content active">
+                <div class="tab-header">
+                    <h2>📋 门诊问诊</h2>
+                    <div class="tab-actions">
+                        <span class="consult-timer" id="consultTimer" style="display:none">
+                            <span class="timer-icon">⏱️</span>
+                            <span class="timer-text" id="timerText">00:00:00</span>
+                        </span>
                     </div>
                 </div>
-            </aside>
-
-            <!-- 动态内容区 -->
-            <section class="content-area">
-                <!-- 问诊标签页 -->
-                <div id="consultationTab" class="tab-content active">
-                    <div class="chat-container">
-                        <div id="chatMessages" class="chat-messages">
-                            <div class="welcome-message">
-                                <div class="welcome-icon-wrapper">
-                                    <span class="welcome-icon">🩺</span>
+                <div class="chat-container">
+                    <div id="chatMessages" class="chat-messages">
+                        <div class="welcome-message">
+                            <div class="welcome-icon-wrapper">
+                                <span class="welcome-icon">🏥</span>
+                            </div>
+                            <h2>门诊医生工作站</h2>
+                            <p class="welcome-desc">请先接诊患者，开始问诊流程</p>
+                            <div class="welcome-features">
+                                <div class="feature-badge">
+                                    <span>💬</span> 智能问诊
                                 </div>
-                                <h2>欢迎使用杏林问诊</h2>
-                                <p class="welcome-desc">沉浸式医疗问诊模拟平台</p>
-                                <p>点击右上角"新患者"按钮开始模拟问诊</p>
-                                <div class="welcome-features">
-                                    <div class="feature-badge">
-                                        <span>💬</span> 智能问诊
-                                    </div>
-                                    <div class="feature-badge">
-                                        <span>🔬</span> 检查分析
-                                    </div>
-                                    <div class="feature-badge">
-                                        <span>💊</span> 精准开药
-                                    </div>
-                                    <div class="feature-badge">
-                                        <span>📊</span> AI评分
+                                <div class="feature-badge">
+                                    <span>🔬</span> 检查检验
+                                </div>
+                                <div class="feature-badge">
+                                    <span>💊</span> 电子处方
+                                </div>
+                                <div class="feature-badge">
+                                    <span>📊</span> 病历评分
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chatInput" placeholder="请输入问诊内容..." disabled>
+                        <button id="sendBtn" class="btn-send" disabled>
+                            <span>发送</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 检查标签页 -->
+            <div id="examinationTab" class="tab-content">
+                <div class="tab-header">
+                    <h2>🔬 检查检验</h2>
+                </div>
+                <div class="examination-container">
+                    <div class="examination-form">
+                        <div class="form-card">
+                            <div class="form-card-header">开具检查单</div>
+                            <div class="form-card-body">
+                                <div class="form-group">
+                                    <label>🔍 搜索疾病/症状/检查项目</label>
+                                    <input type="text" id="unifiedSearchInput" placeholder="输入疾病名、症状或检查名称搜索..." autocomplete="off">
+                                    <div id="unifiedSearchDropdown" class="exam-search-dropdown hidden"></div>
+                                </div>
+                                <div class="form-group">
+                                    <label>检查项目</label>
+                                    <select id="examTypeSelect">
+                                        <option value="">请选择检查项目</option>
+                                    </select>
+                                </div>
+                                <div id="bodyPartGroup" class="form-group hidden">
+                                    <label>检查部位</label>
+                                    <select id="bodyPartSelect">
+                                        <option value="">请选择检查部位</option>
+                                    </select>
+                                </div>
+                                <div class="form-actions">
+                                    <button id="addExamBtn" class="btn btn-primary" disabled>
+                                        <span>➕</span> 添加检查
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="examination-list">
+                        <div class="form-card">
+                            <div class="form-card-header">已开检查单</div>
+                            <div class="form-card-body">
+                                <div id="examListContent">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">🔬</span>
+                                        <p>暂无检查单</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="chat-input-area">
-                            <input type="text" id="chatInput" placeholder="输入问诊问题..." disabled>
-                            <button id="sendBtn" class="btn btn-primary" disabled>
-                                <span>发送</span>
-                            </button>
-                        </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- 检查标签页 -->
-                <div id="examinationTab" class="tab-content">
-                    <div class="examination-container">
-                        <div class="examination-form">
-                            <h3>开具检查单</h3>
-                            <div class="form-group">
-                                <label>🔍 搜索疾病/症状/检查项目</label>
-                                <input type="text" id="unifiedSearchInput" placeholder="输入疾病名、症状或检查名称搜索..." autocomplete="off">
-                                <div id="unifiedSearchDropdown" class="exam-search-dropdown hidden"></div>
+            <!-- 开药标签页 -->
+            <div id="prescriptionTab" class="tab-content">
+                <div class="tab-header">
+                    <h2>💊 处方管理</h2>
+                </div>
+                <div class="prescription-container">
+                    <div class="medicine-selection">
+                        <div class="form-card">
+                            <div class="form-card-header">药品选择</div>
+                            <div class="form-card-body">
+                                <div class="search-box">
+                                    <input type="text" id="medicineSearch" placeholder="输入适应症、药品名称搜索...">
+                                    <button id="searchMedicineBtn" class="btn btn-secondary">🔍</button>
+                                </div>
+                                <div id="medicineCategories" class="category-tabs" style="display:none"></div>
+                                <div id="medicineList" class="medicine-list"></div>
                             </div>
-                            <div class="form-group">
-                                <label>检查项目</label>
-                                <select id="examTypeSelect">
-                                    <option value="">请选择检查项目</option>
-                                </select>
-                            </div>
-                            <div id="bodyPartGroup" class="form-group hidden">
-                                <label>检查部位</label>
-                                <select id="bodyPartSelect">
-                                    <option value="">请选择检查部位</option>
-                                </select>
-                            </div>
-                            <div class="form-actions">
-                                <button id="addExamBtn" class="btn btn-primary" disabled>
-                                    <span>➕</span> 添加检查
+                        </div>
+                    </div>
+                    <div class="prescription-form">
+                        <div class="form-card">
+                            <div class="form-card-header">处方单</div>
+                            <div class="form-card-body">
+                                <div class="form-group">
+                                    <label>诊断</label>
+                                    <input type="text" id="diagnosisInput" placeholder="请输入诊断">
+                                </div>
+                                <div id="prescriptionItems" class="prescription-items">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">💊</span>
+                                        <p>请从左侧选择药品</p>
+                                    </div>
+                                </div>
+                                <div class="prescription-summary">
+                                    <div class="summary-row">
+                                        <span>药品总数:</span>
+                                        <span id="totalMedicines">0</span>
+                                    </div>
+                                    <div class="summary-row total">
+                                        <span>总计:</span>
+                                        <span id="totalPrice">¥0.00</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>医嘱</label>
+                                    <div class="dosage-fields">
+                                        <div class="dosage-row">
+                                            <label>每日次数</label>
+                                            <select id="dosageFrequency">
+                                                <option value="1">每日1次</option>
+                                                <option value="2">每日2次</option>
+                                                <option value="3" selected>每日3次</option>
+                                                <option value="4">每日4次</option>
+                                            </select>
+                                        </div>
+                                        <div class="dosage-row">
+                                            <label>每次用量</label>
+                                            <input type="number" id="dosageAmount" value="1" min="1" max="10">
+                                            <select id="dosageUnit">
+                                                <option value="片" selected>片</option>
+                                                <option value="粒">粒</option>
+                                                <option value="袋">袋</option>
+                                                <option value="ml">ml</option>
+                                            </select>
+                                        </div>
+                                        <div class="dosage-row">
+                                            <label>服用时间</label>
+                                            <select id="dosageTime">
+                                                <option value="饭前" selected>饭前</option>
+                                                <option value="饭后">饭后</option>
+                                                <option value="空腹">空腹</option>
+                                                <option value="睡前">睡前</option>
+                                            </select>
+                                        </div>
+                                        <div class="dosage-row">
+                                            <label>疗程</label>
+                                            <input type="number" id="dosageDuration" value="7" min="1" max="30">
+                                            <span>天</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>医嘱备注</label>
+                                    <textarea id="prescriptionNotes" rows="3" placeholder="请输入医嘱备注..."></textarea>
+                                </div>
+                                <button id="savePrescriptionBtn" class="btn btn-primary btn-block" disabled>
+                                    <span>💾</span> 保存处方
                                 </button>
                             </div>
                         </div>
-                        <div class="examination-list">
-                            <h3>已开检查单</h3>
-                            <div id="examListContent">
-                                <div class="empty-state">
-                                    <span class="empty-icon">🔬</span>
-                                    <p>暂无检查单</p>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- 开药标签页 -->
-                <div id="prescriptionTab" class="tab-content">
-                    <div class="prescription-container">
-                        <div class="medicine-selection">
-                            <h3>药品选择</h3>
-                            <div class="search-box">
-                                <input type="text" id="medicineSearch" placeholder="输入适应症、药品名称搜索...">
-                                <button id="searchMedicineBtn" class="btn btn-secondary">🔍</button>
-                            </div>
-                            <div class="medicine-categories">
-                                <div id="medicineCategories" class="category-tabs" style="display:none">
-                                    <!-- 不再使用分类 -->
-                                </div>
-                                <div id="medicineList" class="medicine-list">
-                                    <!-- 动态生成 -->
-                                </div>
-                            </div>
-                        </div>
-                        <div class="prescription-form">
-                            <h3>处方单</h3>
-                            <div class="form-group">
-                                <label>诊断</label>
-                                <input type="text" id="diagnosisInput" placeholder="请输入诊断">
-                            </div>
-                            <div id="prescriptionItems" class="prescription-items">
-                                <div class="empty-state">
-                                    <span class="empty-icon">💊</span>
-                                    <p>请从左侧选择药品</p>
-                                </div>
-                            </div>
-                            <div class="prescription-summary">
-                                <div class="summary-row">
-                                    <span>药品总数:</span>
-                                    <span id="totalMedicines">0</span>
-                                </div>
-                                <div class="summary-row total">
-                                    <span>总计:</span>
-                                    <span id="totalPrice">¥0.00</span>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>医嘱</label>
-                                <div class="dosage-fields">
-                                    <div class="dosage-row">
-                                        <label>每日次数</label>
-                                        <select id="dosageFrequency">
-                                            <option value="1">每日1次</option>
-                                            <option value="2">每日2次</option>
-                                            <option value="3" selected>每日3次</option>
-                                            <option value="4">每日4次</option>
-                                        </select>
-                                    </div>
-                                    <div class="dosage-row">
-                                        <label>每次用量</label>
-                                        <input type="number" id="dosageAmount" value="1" min="1" max="10">
-                                        <select id="dosageUnit">
-                                            <option value="片" selected>片</option>
-                                            <option value="粒">粒</option>
-                                            <option value="袋">袋</option>
-                                            <option value="ml">ml</option>
-                                        </select>
-                                    </div>
-                                    <div class="dosage-row">
-                                        <label>服用时间</label>
-                                        <select id="dosageTime">
-                                            <option value="饭前" selected>饭前</option>
-                                            <option value="饭后">饭后</option>
-                                            <option value="空腹">空腹</option>
-                                            <option value="睡前">睡前</option>
-                                        </select>
-                                    </div>
-                                    <div class="dosage-row">
-                                        <label>疗程</label>
-                                        <input type="number" id="dosageDuration" value="7" min="1" max="30">
-                                        <span>天</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>医嘱备注</label>
-                                <textarea id="prescriptionNotes" rows="3" placeholder="请输入医嘱备注..."></textarea>
-                            </div>
-                            <button id="savePrescriptionBtn" class="btn btn-primary btn-block" disabled>
-                                <span>💾</span> 保存处方
-                            </button>
-                        </div>
+            <!-- 病历标签页 -->
+            <div id="medicalRecordTab" class="tab-content">
+                <div class="tab-header">
+                    <h2>📝 电子病历</h2>
+                    <div class="tab-actions">
+                        <span id="recordScoreDisplay" class="record-score-display" style="display: none;"></span>
                     </div>
                 </div>
-
-                <!-- 病历标签页 - 完全重写 -->
-                <div id="medicalRecordTab" class="tab-content">
-                    <div class="medical-record-container">
-                        <!-- 左侧：病历列表 -->
-                        <div class="record-sidebar">
-                            <div class="sidebar-header">
-                                <h3>📋 病历列表</h3>
-                                <span id="recordCount" class="record-count">0条</span>
+                <div class="medical-record-container">
+                    <!-- 左侧：病历列表 -->
+                    <div class="record-sidebar">
+                        <div class="sidebar-header">
+                            <h3>病历列表</h3>
+                            <span id="recordCount" class="record-count">0条</span>
+                        </div>
+                        <div id="recordList" class="record-list">
+                            <div class="empty-state">
+                                <span class="empty-icon">📝</span>
+                                <p>暂无病历</p>
                             </div>
-                            <div id="recordList" class="record-list">
-                                <div class="empty-state">
-                                    <span class="empty-icon">📝</span>
-                                    <p>暂无病历</p>
-                                </div>
+                        </div>
+                        <div class="sidebar-footer">
+                            <button id="newRecordBtn" class="btn btn-primary btn-sm">➕ 新建</button>
+                            <button id="exportRecordsBtn" class="btn btn-secondary btn-sm">📥 导出</button>
+                            <button id="clearAllBtn" class="btn btn-danger btn-sm">🗑️ 清空</button>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧：病历编辑 -->
+                    <div class="record-editor">
+                        <div class="editor-header">
+                            <h3>门诊病历</h3>
+                            <div class="editor-status">
+                                <span id="recordStatus">💾 本地</span>
                             </div>
-                            <div class="sidebar-footer">
-                                <button id="newRecordBtn" class="btn btn-primary btn-sm">➕ 新建</button>
-                                <button id="exportRecordsBtn" class="btn btn-secondary btn-sm">📥 导出</button>
-                                <button id="clearAllBtn" class="btn btn-danger btn-sm">🗑️ 清空</button>
-                            </div>
+                            <button id="saveRecordBtn" class="btn btn-primary">保存病历</button>
                         </div>
                         
-                        <!-- 右侧：病历编辑 -->
-                        <div class="record-editor">
-                            <div class="editor-header">
-                                <h3>门诊病历</h3>
-                                <span id="recordScoreDisplay" class="record-score-display" style="display: none;"></span>
-                                <div class="editor-status">
-                                    <span id="recordStatus">💾 本地</span>
-                                </div>
-                                <button id="saveRecordBtn" class="btn btn-primary">
-                                    保存病历
-                                </button>
-                            </div>
-                            
-                            <div class="record-paper">
-                                <!-- 病历头部 - 医院风格 -->
-                                <div class="record-hospital-header">
-                                    <div class="hospital-name">杏林问诊模拟医院</div>
-                                    <div class="hospital-subtitle">门 诊 病 历</div>
-                                </div>
-                                
-                                <!-- 患者基本信息栏 -->
-                                <div class="record-patient-info-bar">
-                                    <div class="info-field"><label>姓名：</label><input type="text" id="mrName" placeholder="姓名"></div>
-                                    <div class="info-field"><label>性别：</label><select id="mrGender"><option value="">-</option><option value="男">男</option><option value="女">女</option></select></div>
-                                    <div class="info-field"><label>年龄：</label><input type="number" id="mrAge" placeholder="年龄" style="width:60px"></div>
-                                    <div class="info-field"><label>婚姻：</label><select id="mrMarital"><option value="">-</option><option value="未婚">未婚</option><option value="已婚">已婚</option><option value="离异">离异</option><option value="丧偶">丧偶</option></select></div>
-                                    <div class="info-field"><label>职业：</label><input type="text" id="mrOccupation" placeholder="职业" style="width:80px"></div>
-                                    <div class="info-field"><label>民族：</label><input type="text" id="mrEthnicity" placeholder="民族" style="width:60px"></div>
-                                </div>
-                                <div class="record-patient-info-bar">
-                                    <div class="info-field"><label>就诊日期：</label><span id="mrDate"></span></div>
-                                    <div class="info-field"><label>病历号：</label><span id="mrRecordNo">-</span></div>
-                                    <div class="info-field"><label>就诊科室：</label><input type="text" id="mrDepartment" value="内科" style="width:80px"></div>
-                                    <div class="info-field"><label>联系电话：</label><input type="text" id="mrPhone" placeholder="手机号" style="width:120px"></div>
-                                    <div class="info-field"><label>联系地址：</label><input type="text" id="mrAddress" placeholder="地址" style="width:200px"></div>
-                                </div>
-                                
-                                <!-- 主诉 -->
-                                <div class="record-section">
-                                    <label class="section-label">主诉</label>
-                                    <textarea id="mrChiefComplaint" rows="2" placeholder="患者就诊的主要症状及持续时间，如：发热伴咳嗽3天..."></textarea>
-                                </div>
-                                
-                                <!-- 现病史 -->
-                                <div class="record-section">
-                                    <label class="section-label">现病史</label>
-                                    <textarea id="mrPresentIllness" rows="4" placeholder="详细描述本次疾病的发生、发展、演变及诊治经过..."></textarea>
-                                </div>
-                                
-                                <!-- 既往史 -->
-                                <div class="record-section">
-                                    <label class="section-label">既往史</label>
-                                    <textarea id="mrPastHistory" rows="2" placeholder="既往重大疾病史、手术史、外伤史、输血史等，如：高血压病史5年，2020年行阑尾切除术..."></textarea>
-                                </div>
-                                
-                                <!-- 个人史 -->
-                                <div class="record-section">
-                                    <label class="section-label">个人史</label>
-                                    <div class="personal-history-grid">
-                                        <div class="ph-item">
-                                            <label>吸烟史：</label>
-                                            <select id="mrSmoking">
-                                                <option value="无">无吸烟史</option>
-                                                <option value="已戒烟">已戒烟</option>
-                                                <option value="吸烟">吸烟</option>
-                                            </select>
-                                            <input type="text" id="mrSmokingDetail" placeholder="如：10支/天×20年" style="width:160px">
-                                        </div>
-                                        <div class="ph-item">
-                                            <label>饮酒史：</label>
-                                            <select id="mrDrinking">
-                                                <option value="无">无饮酒史</option>
-                                                <option value="已戒酒">已戒酒</option>
-                                                <option value="偶尔">偶尔饮酒</option>
-                                                <option value="经常">经常饮酒</option>
-                                            </select>
-                                            <input type="text" id="mrDrinkingDetail" placeholder="如：白酒2两/天×10年" style="width:160px">
-                                        </div>
-                                        <div class="ph-item">
-                                            <label>药物过敏史：</label>
-                                            <select id="mrAllergy">
-                                                <option value="无">无已知过敏</option>
-                                                <option value="有">有过敏</option>
-                                            </select>
-                                            <input type="text" id="mrAllergyDetail" placeholder="如：青霉素过敏、磺胺过敏" style="width:200px">
-                                        </div>
-                                        <div class="ph-item">
-                                            <label>冶游史：</label>
-                                            <select id="mrExposure">
-                                                <option value="无">否认</option>
-                                                <option value="有">有</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- 家族史 / 遗传病史 -->
-                                <div class="record-section">
-                                    <label class="section-label">家族史</label>
-                                    <textarea id="mrFamilyHistory" rows="2" placeholder="家族遗传病史及家族成员健康状况，如：父亲有高血压、糖尿病史；母亲有乳腺癌史..."></textarea>
-                                </div>
-                                
-                                <!-- 月经婚育史（女性） -->
-                                <div class="record-section" id="mrMensesSection" style="display:none">
-                                    <label class="section-label">月经婚育史</label>
-                                    <textarea id="mrMenses" rows="2" placeholder="月经周期、末次月经、婚育情况等..."></textarea>
-                                </div>
-                                
-                                <!-- 体格检查 -->
-                                <div class="record-section">
-                                    <label class="section-label">体格检查</label>
-                                    <div class="vitals-row">
-                                        <span>T: <input type="text" id="mrTemperature" value="36.5">℃</span>
-                                        <span>P: <input type="text" id="mrPulse" value="80">次/分</span>
-                                        <span>R: <input type="text" id="mrRespiration" value="20">次/分</span>
-                                        <span>BP: <input type="text" id="mrBloodPressure" value="120/80">mmHg</span>
-                                        <span>SpO₂: <input type="text" id="mrOxygen" value="98">%</span>
-                                    </div>
-                                    <div class="physical-exam-grid">
-                                        <div class="pe-item"><label>一般情况：</label><textarea id="mrGeneralExam" rows="1" placeholder="神志、精神、发育、营养等"></textarea></div>
-                                        <div class="pe-item"><label>皮肤黏膜：</label><textarea id="mrSkinExam" rows="1" placeholder="色泽、皮疹、出血点等"></textarea></div>
-                                        <div class="pe-item"><label>头颈部：</label><textarea id="mrHeadNeck" rows="1" placeholder="头颅、眼、耳、鼻、口咽、颈部等"></textarea></div>
-                                        <div class="pe-item"><label>胸部：</label><textarea id="mrChestExam" rows="1" placeholder="胸廓、肺部、心脏等"></textarea></div>
-                                        <div class="pe-item"><label>腹部：</label><textarea id="mrAbdomenExam" rows="1" placeholder="腹部视触叩听"></textarea></div>
-                                        <div class="pe-item"><label>四肢脊柱：</label><textarea id="mrLimbExam" rows="1" placeholder="四肢活动、关节、脊柱等"></textarea></div>
-                                        <div class="pe-item"><label>神经系统：</label><textarea id="mrNeuroExam" rows="1" placeholder="肌力、肌张力、腱反射、病理征等"></textarea></div>
-                                    </div>
-                                    <textarea id="mrPhysicalExam" rows="2" placeholder="其他体格检查补充..."></textarea>
-                                </div>
-                                
-                                <!-- 辅助检查 -->
-                                <div class="record-section">
-                                    <label class="section-label">辅助检查</label>
-                                    <textarea id="mrAuxiliary" rows="3" placeholder="实验室检查、影像学检查等结果..."></textarea>
-                                </div>
-                                
-                                <!-- 诊断 -->
-                                <div class="record-section">
-                                    <label class="section-label">诊断</label>
-                                    <div class="diagnosis-area">
-                                        <div class="diag-item">
-                                            <label>西医诊断：</label>
-                                            <textarea id="mrDiagnosis" rows="2" placeholder="主要诊断、次要诊断..."></textarea>
-                                        </div>
-                                        <div class="diag-item">
-                                            <label>中医诊断：</label>
-                                            <textarea id="mrTCMDiagnosis" rows="2" placeholder="中医病名、证型..."></textarea>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- 诊疗意见 -->
-                                <div class="record-section">
-                                    <label class="section-label">诊疗意见</label>
-                                    <textarea id="mrTreatment" rows="3" placeholder="治疗方案、用药计划、随访安排等..."></textarea>
-                                </div>
-                                
-                                <!-- 处理/处方 -->
-                                <div class="record-section">
-                                    <label class="section-label">处理/处方</label>
-                                    <textarea id="mrPrescription" rows="3" placeholder="开具的处方药物及用法用量..."></textarea>
-                                </div>
-                                
-                                <!-- 医嘱 -->
-                                <div class="record-section">
-                                    <label class="section-label">医嘱</label>
-                                    <textarea id="mrDoctorOrders" rows="2" placeholder="注意事项、复诊时间等..."></textarea>
-                                </div>
-                                
-                                <!-- 医生签名 -->
-                                <div class="record-section record-footer">
-                                    <div class="signature-row">
-                                        <span>医师签名：</span>
-                                        <input type="text" id="mrDoctorSignature" class="signature-input" placeholder="签名">
-                                        <span class="date-place">日期：</span>
-                                        <input type="date" id="mrSignatureDate" class="date-input">
-                                    </div>
-                                </div>
-
-                                <!-- 会诊结果区域 -->
-                                <div id="recordConsultationSection" class="record-section" style="display: none;">
-                                    <label class="section-label">🩺 会诊记录</label>
-                                    <div id="recordConsultationResults" style="font-size:13px; color:#555;"></div>
-                                </div>
-
-                                <!-- 手术记录区域 -->
-                                <div id="recordSurgerySection" class="record-section" style="display: none;">
-                                    <label class="section-label">🔪 手术记录</label>
-                                    <div id="recordSurgeryResults" style="font-size:13px; color:#555;"></div>
-                                </div>
-                            </div>
-
-                            <!-- 评分详情区域（有评分时显示） -->
+                        <div class="record-paper">
+                            <!-- 评分详情区域（顶部显示） -->
                             <div id="recordScorePanel" class="record-score-panel" style="display: none;">
                                 <div class="score-panel-header">
                                     <h4>📊 诊疗评估报告</h4>
                                     <div class="score-panel-actions">
                                         <span id="scorePanelAiTag" class="ai-tag">🤖 AI评分</span>
-                                        <button id="rescoreBtn" class="btn btn-sm btn-outline" onclick="rescoreCurrentRecord()" title="重新评分">
-                                            🔄 重新评分
-                                        </button>
+                                        <button id="rescoreBtn" class="btn btn-sm btn-outline" onclick="rescoreCurrentRecord()" title="重新评分">🔄 重新评分</button>
                                     </div>
                                 </div>
-
-                                <!-- 总分概览 -->
                                 <div class="score-panel-overview">
                                     <div class="score-panel-grade" id="scorePanelGrade">?</div>
                                     <div class="score-panel-score" id="scorePanelScore">0 分</div>
                                 </div>
-
-                                <!-- 分项评分 -->
-                                <div class="score-panel-breakdown" id="scorePanelBreakdown">
-                                    <!-- 动态生成 -->
-                                </div>
-
-                                <!-- 费用统计 -->
+                                <div class="score-panel-breakdown" id="scorePanelBreakdown"></div>
                                 <div class="score-panel-costs" id="scorePanelCosts" style="display: none;">
                                     <h5>💰 费用统计</h5>
-                                    <div class="cost-detail-row">
-                                        <span>检查费用</span>
-                                        <span id="costExamValue">¥0.00</span>
-                                    </div>
-                                    <div class="cost-detail-row">
-                                        <span>药品费用</span>
-                                        <span id="costMedValue">¥0.00</span>
-                                    </div>
-                                    <div class="cost-detail-row cost-total">
-                                        <span>总计</span>
-                                        <span id="costTotalValue">¥0.00</span>
-                                    </div>
+                                    <div class="cost-detail-row"><span>检查费用</span><span id="costExamValue">¥0.00</span></div>
+                                    <div class="cost-detail-row"><span>药品费用</span><span id="costMedValue">¥0.00</span></div>
+                                    <div class="cost-detail-row cost-total"><span>总计</span><span id="costTotalValue">¥0.00</span></div>
                                 </div>
-
-                                <!-- 正确诊断 -->
                                 <div class="score-panel-diagnosis" id="scorePanelDiagnosis" style="display: none;">
-                                    <div class="diagnosis-row">
-                                        <span class="diag-label">正确诊断：</span>
-                                        <span class="diag-value" id="correctDiagValue">-</span>
-                                    </div>
-                                    <div class="diagnosis-row">
-                                        <span class="diag-label">诊断匹配：</span>
-                                        <span class="diag-value" id="matchTypeValue">-</span>
-                                    </div>
+                                    <div class="diagnosis-row"><span class="diag-label">正确诊断：</span><span class="diag-value" id="correctDiagValue">-</span></div>
+                                    <div class="diagnosis-row"><span class="diag-label">诊断匹配：</span><span class="diag-value" id="matchTypeValue">-</span></div>
                                 </div>
-
-                                <!-- 总体评价 -->
                                 <div class="score-panel-comment" id="scorePanelComment" style="display: none;">
                                     <h5>💬 总体评价</h5>
                                     <p id="overallCommentText"></p>
                                 </div>
+                                <div class="score-panel-error-points" id="scorePanelErrorPoints" style="display: none;"></div>
+                            </div>
 
-                                <!-- 错误分析 -->
-                                <div class="score-panel-error-points" id="scorePanelErrorPoints" style="display: none;">
-                                    <!-- 动态生成 -->
+                            <!-- 病历头部 - 医院风格 -->
+                            <div class="record-hospital-header">
+                                <div class="hospital-name">杏林医院</div>
+                                <div class="hospital-subtitle">门 诊 病 历</div>
+                            </div>
+                            
+                            <!-- 患者基本信息栏 -->
+                            <div class="record-patient-info-bar">
+                                <div class="info-field"><label>姓名：</label><input type="text" id="mrName" placeholder="姓名"></div>
+                                <div class="info-field"><label>性别：</label><select id="mrGender"><option value="">-</option><option value="男">男</option><option value="女">女</option></select></div>
+                                <div class="info-field"><label>年龄：</label><input type="number" id="mrAge" placeholder="年龄" style="width:60px"></div>
+                                <div class="info-field"><label>婚姻：</label><select id="mrMarital"><option value="">-</option><option value="未婚">未婚</option><option value="已婚">已婚</option><option value="离异">离异</option><option value="丧偶">丧偶</option></select></div>
+                                <div class="info-field"><label>职业：</label><input type="text" id="mrOccupation" placeholder="职业" style="width:80px"></div>
+                                <div class="info-field"><label>民族：</label><input type="text" id="mrEthnicity" placeholder="民族" style="width:60px"></div>
+                            </div>
+                            <div class="record-patient-info-bar">
+                                <div class="info-field"><label>就诊日期：</label><span id="mrDate"></span></div>
+                                <div class="info-field"><label>病历号：</label><span id="mrRecordNo">-</span></div>
+                                <div class="info-field"><label>就诊科室：</label><input type="text" id="mrDepartment" value="内科" style="width:80px"></div>
+                                <div class="info-field"><label>联系电话：</label><input type="text" id="mrPhone" placeholder="手机号" style="width:120px"></div>
+                                <div class="info-field"><label>联系地址：</label><input type="text" id="mrAddress" placeholder="地址" style="width:200px"></div>
+                            </div>
+                            
+                            <!-- 主诉 -->
+                            <div class="record-section">
+                                <label class="section-label">主诉</label>
+                                <textarea id="mrChiefComplaint" rows="2" placeholder="患者就诊的主要症状及持续时间，如：发热伴咳嗽3天..."></textarea>
+                            </div>
+                            
+                            <!-- 现病史 -->
+                            <div class="record-section">
+                                <label class="section-label">现病史</label>
+                                <textarea id="mrPresentIllness" rows="4" placeholder="详细描述本次疾病的发生、发展、演变及诊治经过..."></textarea>
+                            </div>
+                            
+                            <!-- 既往史 -->
+                            <div class="record-section">
+                                <label class="section-label">既往史</label>
+                                <textarea id="mrPastHistory" rows="2" placeholder="既往重大疾病史、手术史、外伤史、输血史等，如：高血压病史5年，2020年行阑尾切除术..."></textarea>
+                            </div>
+                            
+                            <!-- 个人史 -->
+                            <div class="record-section">
+                                <label class="section-label">个人史</label>
+                                <div class="personal-history-grid">
+                                    <div class="ph-item">
+                                        <label>吸烟史：</label>
+                                        <select id="mrSmoking">
+                                            <option value="无">无吸烟史</option>
+                                            <option value="已戒烟">已戒烟</option>
+                                            <option value="吸烟">吸烟</option>
+                                        </select>
+                                        <input type="text" id="mrSmokingDetail" placeholder="如：10支/天×20年" style="width:160px">
+                                    </div>
+                                    <div class="ph-item">
+                                        <label>饮酒史：</label>
+                                        <select id="mrDrinking">
+                                            <option value="无">无饮酒史</option>
+                                            <option value="已戒酒">已戒酒</option>
+                                            <option value="偶尔">偶尔饮酒</option>
+                                            <option value="经常">经常饮酒</option>
+                                        </select>
+                                        <input type="text" id="mrDrinkingDetail" placeholder="如：白酒2两/天×10年" style="width:160px">
+                                    </div>
+                                    <div class="ph-item">
+                                        <label>药物过敏史：</label>
+                                        <select id="mrAllergy">
+                                            <option value="无">无已知过敏</option>
+                                            <option value="有">有过敏</option>
+                                        </select>
+                                        <input type="text" id="mrAllergyDetail" placeholder="如：青霉素过敏、磺胺过敏" style="width:200px">
+                                    </div>
+                                    <div class="ph-item">
+                                        <label>冶游史：</label>
+                                        <select id="mrExposure">
+                                            <option value="无">否认</option>
+                                            <option value="有">有</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 家族史 / 遗传病史 -->
+                            <div class="record-section">
+                                <label class="section-label">家族史</label>
+                                <textarea id="mrFamilyHistory" rows="2" placeholder="家族遗传病史及家族成员健康状况，如：父亲有高血压、糖尿病史；母亲有乳腺癌史..."></textarea>
+                            </div>
+                            
+                            <!-- 月经婚育史（女性） -->
+                            <div class="record-section" id="mrMensesSection" style="display:none">
+                                <label class="section-label">月经婚育史</label>
+                                <textarea id="mrMenses" rows="2" placeholder="月经周期、末次月经、婚育情况等..."></textarea>
+                            </div>
+                            
+                            <!-- 体格检查 -->
+                            <div class="record-section">
+                                <label class="section-label">体格检查</label>
+                                <div class="vitals-row">
+                                    <span>T: <input type="text" id="mrTemperature" value="36.5">℃</span>
+                                    <span>P: <input type="text" id="mrPulse" value="80">次/分</span>
+                                    <span>R: <input type="text" id="mrRespiration" value="20">次/分</span>
+                                    <span>BP: <input type="text" id="mrBloodPressure" value="120/80">mmHg</span>
+                                    <span>SpO₂: <input type="text" id="mrOxygen" value="98">%</span>
+                                </div>
+                                <div class="physical-exam-grid">
+                                    <div class="pe-item"><label>一般情况：</label><textarea id="mrGeneralExam" rows="1" placeholder="神志、精神、发育、营养等"></textarea></div>
+                                    <div class="pe-item"><label>皮肤黏膜：</label><textarea id="mrSkinExam" rows="1" placeholder="色泽、皮疹、出血点等"></textarea></div>
+                                    <div class="pe-item"><label>头颈部：</label><textarea id="mrHeadNeck" rows="1" placeholder="头颅、眼、耳、鼻、口咽、颈部等"></textarea></div>
+                                    <div class="pe-item"><label>胸部：</label><textarea id="mrChestExam" rows="1" placeholder="胸廓、肺部、心脏等"></textarea></div>
+                                    <div class="pe-item"><label>腹部：</label><textarea id="mrAbdomenExam" rows="1" placeholder="腹部视触叩听"></textarea></div>
+                                    <div class="pe-item"><label>四肢脊柱：</label><textarea id="mrLimbExam" rows="1" placeholder="四肢活动、关节、脊柱等"></textarea></div>
+                                    <div class="pe-item"><label>神经系统：</label><textarea id="mrNeuroExam" rows="1" placeholder="肌力、肌张力、腱反射、病理征等"></textarea></div>
+                                </div>
+                                <textarea id="mrPhysicalExam" rows="2" placeholder="其他体格检查补充..."></textarea>
+                            </div>
+                            
+                            <!-- 辅助检查 -->
+                            <div class="record-section">
+                                <label class="section-label">辅助检查</label>
+                                <textarea id="mrAuxiliary" rows="3" placeholder="实验室检查、影像学检查等结果..."></textarea>
+                            </div>
+                            
+                            <!-- 诊断 -->
+                            <div class="record-section">
+                                <label class="section-label">诊断</label>
+                                <div class="diagnosis-area">
+                                    <div class="diag-item">
+                                        <label>西医诊断：</label>
+                                        <textarea id="mrDiagnosis" rows="2" placeholder="主要诊断、次要诊断..."></textarea>
+                                    </div>
+                                    <div class="diag-item">
+                                        <label>中医诊断：</label>
+                                        <textarea id="mrTCMDiagnosis" rows="2" placeholder="中医病名、证型..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 诊疗意见 -->
+                            <div class="record-section">
+                                <label class="section-label">诊疗意见</label>
+                                <textarea id="mrTreatment" rows="3" placeholder="治疗方案、用药计划、随访安排等..."></textarea>
+                            </div>
+                            
+                            <!-- 处理/处方 -->
+                            <div class="record-section">
+                                <label class="section-label">处理/处方</label>
+                                <textarea id="mrPrescription" rows="3" placeholder="开具的处方药物及用法用量..."></textarea>
+                            </div>
+                            
+                            <!-- 医嘱 -->
+                            <div class="record-section">
+                                <label class="section-label">医嘱</label>
+                                <textarea id="mrDoctorOrders" rows="2" placeholder="注意事项、复诊时间等..."></textarea>
+                            </div>
+                            
+                            <!-- 医生签名 -->
+                            <div class="record-section record-footer">
+                                <div class="signature-row">
+                                    <span>医师签名：</span>
+                                    <input type="text" id="mrDoctorSignature" class="signature-input" placeholder="签名">
+                                    <span class="date-place">日期：</span>
+                                    <input type="date" id="mrSignatureDate" class="date-input">
+                                </div>
+                            </div>
+
+                            <!-- 会诊结果区域 -->
+                            <div id="recordConsultationSection" class="record-section" style="display: none;">
+                                <label class="section-label">🩺 会诊记录</label>
+                                <div id="recordConsultationResults" style="font-size:13px; color:#555;"></div>
+                            </div>
+
+                            <!-- 手术记录区域 -->
+                            <div id="recordSurgerySection" class="record-section" style="display: none;">
+                                <label class="section-label">🔪 手术记录</label>
+                                <div id="recordSurgeryResults" style="font-size:13px; color:#555;"></div>
+                            </div>
+                        </div>
+
+</div>
+                </div>
+            </div>
+
+            <!-- 手术标签页 -->
+            <div id="surgeryTab" class="tab-content">
+                <div class="tab-header">
+                    <h2>🔪 手术管理</h2>
+                </div>
+                <div class="surgery-container">
+                    <div class="surgery-form">
+                        <div class="form-card">
+                            <div class="form-card-header">手术申请</div>
+                            <div class="form-card-body">
+                                <div class="form-group">
+                                    <label>🔍 搜索手术</label>
+                                    <input type="text" id="surgerySearchInput" placeholder="输入手术名称或科室搜索..." autocomplete="off">
+                                    <div id="surgerySearchDropdown" class="search-dropdown hidden"></div>
+                                </div>
+                                <div class="form-group">
+                                    <label>手术名称</label>
+                                    <select id="surgeryTypeSelect">
+                                        <option value="">请选择手术</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>手术类型</label>
+                                    <select id="surgeryCategorySelect">
+                                        <option value="elective">择期手术</option>
+                                        <option value="emergency">急诊手术</option>
+                                        <option value="outpatient">门诊手术</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>麻醉方式</label>
+                                    <select id="anesthesiaSelect">
+                                        <option value="general">全身麻醉</option>
+                                        <option value="local">局部麻醉</option>
+                                        <option value="spinal">脊髓麻醉</option>
+                                        <option value="epidural">硬膜外麻醉</option>
+                                        <option value="nerve_block">神经阻滞</option>
+                                        <option value="sedation">镇静麻醉</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>术前诊断</label>
+                                    <textarea id="surgeryDiagnosis" rows="2" placeholder="请输入术前诊断..."></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>手术指征</label>
+                                    <textarea id="surgeryIndication" rows="2" placeholder="请输入手术指征..."></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button id="submitSurgeryBtn" class="btn btn-primary" disabled>
+                                        <span>📋</span> 提交手术申请
+                                    </button>
+                                    <button id="aiArrangeSurgeryBtn" class="btn btn-success">
+                                        <span>🤖</span> AI一键安排
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <!-- 手术标签页 -->
-                <div id="surgeryTab" class="tab-content">
-                    <div class="surgery-container">
-                        <div class="surgery-form">
-                            <h3>手术申请</h3>
-                            <div class="form-group">
-                                <label>🔍 搜索手术</label>
-                                <input type="text" id="surgerySearchInput" placeholder="输入手术名称或科室搜索..." autocomplete="off">
-                                <div id="surgerySearchDropdown" class="search-dropdown hidden"></div>
-                            </div>
-                            <div class="form-group">
-                                <label>手术名称</label>
-                                <select id="surgeryTypeSelect">
-                                    <option value="">请选择手术</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>手术类型</label>
-                                <select id="surgeryCategorySelect">
-                                    <option value="elective">择期手术</option>
-                                    <option value="emergency">急诊手术</option>
-                                    <option value="outpatient">门诊手术</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>麻醉方式</label>
-                                <select id="anesthesiaSelect">
-                                    <option value="general">全身麻醉</option>
-                                    <option value="local">局部麻醉</option>
-                                    <option value="spinal">脊髓麻醉</option>
-                                    <option value="epidural">硬膜外麻醉</option>
-                                    <option value="nerve_block">神经阻滞</option>
-                                    <option value="sedation">镇静麻醉</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>术前诊断</label>
-                                <textarea id="surgeryDiagnosis" rows="2" placeholder="请输入术前诊断..."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>手术指征</label>
-                                <textarea id="surgeryIndication" rows="2" placeholder="请输入手术指征..."></textarea>
-                            </div>
-                            <div class="form-actions">
-                                <button id="submitSurgeryBtn" class="btn btn-primary" disabled>
-                                    <span>📋</span> 提交手术申请
-                                </button>
-                                <button id="aiArrangeSurgeryBtn" class="btn btn-success">
-                                    <span>🤖</span> AI一键安排
-                                </button>
-                            </div>
-                        </div>
-                        <div class="surgery-list">
-                            <div class="surgery-list-header">
-                                <h3>手术记录</h3>
+                    <div class="surgery-list">
+                        <div class="form-card">
+                            <div class="form-card-header">
+                                手术记录
                                 <div class="surgery-filter">
                                     <select id="surgeryStatusFilter">
                                         <option value="all">全部状态</option>
@@ -614,181 +635,185 @@
                                     </select>
                                 </div>
                             </div>
-                            <div id="surgeryListContent">
-                                <div class="empty-state">
-                                    <span class="empty-icon">🔪</span>
-                                    <p>暂无手术记录</p>
+                            <div class="form-card-body">
+                                <div id="surgeryListContent">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">🔪</span>
+                                        <p>暂无手术记录</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- 会诊标签页 -->
-                <div id="consultationRequestTab" class="tab-content">
-                    <div class="consultation-container">
-                        <div class="consultation-form">
-                            <h3>会诊申请</h3>
-                            <div class="form-group">
-                                <label>会诊类型</label>
-                                <select id="consultationTypeSelect">
-                                    <option value="regular">普通会诊</option>
-                                    <option value="emergency">急会诊</option>
-                                    <option value="multi">多学科会诊</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>申请科室</label>
-                                <input type="text" id="consultReqDept" placeholder="申请科室">
-                            </div>
-                            <div class="form-group">
-                                <label>会诊科室</label>
-                                <input type="text" id="consultConsultDept" placeholder="会诊科室">
-                            </div>
-                            <div class="form-group">
-                                <label>会诊原因</label>
-                                <textarea id="consultReason" rows="3" placeholder="请输入会诊原因..."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>目前诊断</label>
-                                <textarea id="consultDiagnosis" rows="2" placeholder="请输入目前诊断..."></textarea>
-                            </div>
-                            <div class="form-group" id="attachedExamsGroup">
-                                <label>附带检查结果</label>
-                                <div id="attachedExamsList" style="max-height:200px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:6px; padding:8px; background:#fafafa;">
-                                    <div style="text-align:center; color:#999; padding:12px;">请先创建患者并完成检查</div>
+            <!-- 会诊标签页 -->
+            <div id="consultationRequestTab" class="tab-content">
+                <div class="tab-header">
+                    <h2>🤝 会诊申请</h2>
+                </div>
+                <div class="consultation-container">
+                    <div class="consultation-form">
+                        <div class="form-card">
+                            <div class="form-card-header">会诊申请</div>
+                            <div class="form-card-body">
+                                <div class="form-group">
+                                    <label>会诊类型</label>
+                                    <select id="consultationTypeSelect">
+                                        <option value="regular">普通会诊</option>
+                                        <option value="emergency">急会诊</option>
+                                        <option value="multi">多学科会诊</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>申请科室</label>
+                                    <input type="text" id="consultReqDept" placeholder="申请科室">
+                                </div>
+                                <div class="form-group">
+                                    <label>会诊科室</label>
+                                    <input type="text" id="consultConsultDept" placeholder="会诊科室">
+                                </div>
+                                <div class="form-group">
+                                    <label>会诊原因</label>
+                                    <textarea id="consultReason" rows="3" placeholder="请输入会诊原因..."></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>目前诊断</label>
+                                    <textarea id="consultDiagnosis" rows="2" placeholder="请输入目前诊断..."></textarea>
+                                </div>
+                                <div class="form-group" id="attachedExamsGroup">
+                                    <label>附带检查结果</label>
+                                    <div id="attachedExamsList" style="max-height:200px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:6px; padding:8px; background:#fafafa;">
+                                        <div style="text-align:center; color:#999; padding:12px;">请先创建患者并完成检查</div>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button id="submitConsultationBtn" class="btn btn-primary">
+                                        <span>📋</span> 提交会诊
+                                    </button>
+                                    <button id="aiFillConsultationBtn" class="btn btn-success">
+                                        <span>🤖</span> AI一键填写
+                                    </button>
                                 </div>
                             </div>
-                            <div class="form-actions">
-                                <button id="submitConsultationBtn" class="btn btn-primary">
-                                    <span>📋</span> 提交会诊
-                                </button>
-                                <button id="aiFillConsultationBtn" class="btn btn-success">
-                                    <span>🤖</span> AI一键填写
-                                </button>
-                            </div>
                         </div>
-                        <div class="consultation-list">
-                            <h3>会诊记录</h3>
-                            <div id="consultationListContent">
-                                <div class="empty-state">
-                                    <span class="empty-icon">🤝</span>
-                                    <p>暂无会诊记录</p>
+                    </div>
+                    <div class="consultation-list">
+                        <div class="form-card">
+                            <div class="form-card-header">会诊记录</div>
+                            <div class="form-card-body">
+                                <div id="consultationListContent">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">🤝</span>
+                                        <p>暂无会诊记录</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </section>
+            </div>
         </main>
-
-        <!-- 检查结果弹窗 -->
-        <div id="examResultModal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>检查结果</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div id="examResultContent" class="modal-body">
-                    <!-- 动态生成 -->
-                </div>
-            </div>
-        </div>
-
-        <!-- 处方详情弹窗 -->
-        <div id="prescriptionModal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>处方详情</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div id="prescriptionDetailContent" class="modal-body">
-                    <!-- 动态生成 -->
-                </div>
-            </div>
-        </div>
-
-        <!-- 药品详情弹窗 -->
-        <div id="medicineDetailModal" class="modal hidden">
-            <div class="modal-content modal-sm">
-                <div class="modal-header">
-                    <h3 id="medDetailTitle">药品详情</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div id="medicineDetailContent" class="modal-body">
-                    <!-- 动态生成 -->
-                </div>
-            </div>
-        </div>
-
-        <!-- 诊断结果弹窗 -->
-        <div id="diagnosisResultModal" class="modal hidden">
-            <div class="modal-content modal-lg">
-                <div class="modal-header">
-                    <h3>📊 诊疗评估报告</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div id="diagnosisResultContent" class="modal-body">
-                    <!-- 动态生成 -->
-                </div>
-            </div>
-        </div>
-
-        <!-- AI设置弹窗 -->
-        <div id="settingsModal" class="modal hidden">
-            <div class="modal-content modal-md">
-                <div class="modal-header">
-                    <h3>⚙️ AI 模型设置</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="settings-section">
-                        <h4>🌐 API网关</h4>
-                        <div id="apiPresetsList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
-                            <div style="color:#999;padding:8px;">加载中...</div>
-                        </div>
-                    </div>
-                    <div class="settings-section">
-                        <h4>🤖 模型管理</h4>
-                        <div class="form-group">
-                            <label>当前模型</label>
-                            <div id="currentModelDisplay" style="padding:8px 12px;background:#f5f5f5;border-radius:6px;font-weight:500;color:#333;">加载中...</div>
-                        </div>
-                        <div class="settings-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
-                            <button id="loadModelsBtn" class="btn btn-secondary">📋 获取模型列表</button>
-                            <button id="testModelBtn" class="btn btn-secondary">🔍 检测当前模型</button>
-                        </div>
-                        <div id="modelTestResult" class="test-result" style="margin-top:8px;"></div>
-                        <div id="modelsList" style="margin-top:12px;max-height:300px;overflow-y:auto;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 手术详情弹窗 -->
-        <div id="surgeryDetailModal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>🔪 手术详情</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div id="surgeryDetailContent" class="modal-body"></div>
-            </div>
-        </div>
-
-        <!-- AI安排手术结果弹窗 -->
-        <div id="aiArrangeModal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>🤖 AI手术安排</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div id="aiArrangeContent" class="modal-body"></div>
-            </div>
-        </div>
-
     </div>
 
-    <script src="app.js?v=20260531af"></script>
+    <!-- 检查结果弹窗 -->
+    <div id="examResultModal" class="modal hidden">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>检查结果</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="examResultContent" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- 处方详情弹窗 -->
+    <div id="prescriptionModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>处方详情</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="prescriptionDetailContent" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- 药品详情弹窗 -->
+    <div id="medicineDetailModal" class="modal hidden">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3 id="medDetailTitle">药品详情</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="medicineDetailContent" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- 诊断结果弹窗 -->
+    <div id="diagnosisResultModal" class="modal hidden">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>📊 诊疗评估报告</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="diagnosisResultContent" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- AI设置弹窗 -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content modal-md">
+            <div class="modal-header">
+                <h3>⚙️ 系统设置</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4>🌐 API网关</h4>
+                    <div id="apiPresetsList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+                        <div style="color:#999;padding:8px;">加载中...</div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>🤖 模型管理</h4>
+                    <div class="form-group">
+                        <label>当前模型</label>
+                        <div id="currentModelDisplay" style="padding:8px 12px;background:#f5f5f5;border-radius:6px;font-weight:500;color:#333;">加载中...</div>
+                    </div>
+                    <div class="settings-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button id="loadModelsBtn" class="btn btn-secondary">📋 获取模型列表</button>
+                        <button id="testModelBtn" class="btn btn-secondary">🔍 检测当前模型</button>
+                    </div>
+                    <div id="modelTestResult" class="test-result" style="margin-top:8px;"></div>
+                    <div id="modelsList" style="margin-top:12px;max-height:300px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 手术详情弹窗 -->
+    <div id="surgeryDetailModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔪 手术详情</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="surgeryDetailContent" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- AI安排手术结果弹窗 -->
+    <div id="aiArrangeModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🤖 AI手术安排</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div id="aiArrangeContent" class="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="app.js?v=20260610_his2"></script>
 </body>
 </html>

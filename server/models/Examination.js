@@ -706,6 +706,16 @@ const EXAMINATION_TYPES = {
     price: 200,
     description: '自身免疫性疾病抗体谱（ANA/ENA/dsDNA等）',
     searchableDiseases: ['红斑狼疮', '类风湿', '干燥综合征', '硬皮病', '自身免疫病', '风湿']
+  },
+
+  // ========== 查体 ==========
+  physicalExam: {
+    id: 'physical_exam',
+    name: '体格检查',
+    category: '查体',
+    price: 20,
+    description: '系统体格检查（AI根据病情自动生成相关查体结果）',
+    searchableDiseases: []
   }
 };
 

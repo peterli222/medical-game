@@ -263,7 +263,7 @@ class ThinkingFilter {
 // DOM 元素
 const elements = {
     // 导航
-    navTabs: document.querySelectorAll('.nav-tab'),
+    navTabs: document.querySelectorAll('.menu-item'),
     tabContents: document.querySelectorAll('.tab-content'),
     
     // 患者信息
@@ -393,9 +393,36 @@ const elements = {
     prescriptionDetailContent: document.getElementById('prescriptionDetailContent'),
 };
 
+// 更新系统日期时间
+function updateSystemDateTime() {
+    const now = new Date();
+    const dateEl = document.getElementById('sysDate');
+    const timeEl = document.getElementById('sysTime');
+    
+    if (dateEl) {
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+        const weekDay = weekDays[now.getDay()];
+        dateEl.textContent = year + '年' + month + '月' + day + '日 星期' + weekDay;
+    }
+    
+    if (timeEl) {
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        timeEl.textContent = hours + ':' + minutes + ':' + seconds;
+    }
+}
+
 // 初始化
 async function init() {
     loadLocalRecords();
+    // 初始化系统时间
+    updateSystemDateTime();
+    setInterval(updateSystemDateTime, 1000);
+
     setupEventListeners();
     await loadExaminationTypes();
     await loadMedicineDatabase();
@@ -1147,6 +1174,15 @@ async function loadRecordSurgeries(patientId) {
                 if (s.postOpNotes) html += `<div><strong>术后处理：</strong>${s.postOpNotes}</div>`;
                 html += `</div>`;
             }
+            if (s.status === 'completed' && (s.examinationResult || s.specialistOpinion)) {
+                html += `<div style="margin-top:6px; padding:6px 8px; background:#f5f9ff; border:1px solid #d0e3f7; border-radius:4px;">`;
+                html += `<div style="color:#1976D2;font-weight:600;margin-bottom:4px;">🔍 探查报告</div>`;
+                if (s.examinationResult) html += `<div><strong>检查所见：</strong>${s.examinationResult}</div>`;
+                if (s.specialistOpinion) html += `<div><strong>专科意见：</strong>${s.specialistOpinion}</div>`;
+                if (s.diagnosisConclusion) html += `<div><strong>诊断结论：</strong><span style="color:#d32f2f;font-weight:600;">${s.diagnosisConclusion}</span></div>`;
+                if (s.recommendedActions) html += `<div><strong>后续建议：</strong>${s.recommendedActions}</div>`;
+                html += `</div>`;
+            }
             html += `</div>`;
         });
 
@@ -1223,6 +1259,7 @@ function saveCurrentRecord() {
 }
 
 // 渲染病历列表
+// 渲染病历列表
 function renderRecordList() {
     if (medicalRecords.length === 0) {
         elements.recordList.innerHTML = `
@@ -1235,22 +1272,14 @@ function renderRecordList() {
     }
     
     elements.recordList.innerHTML = medicalRecords.map(record => {
-        const gradeEmoji = { 'S': '🏆', 'A': '⭐', 'B': '👍', 'C': '📝', 'D': '📚' };
-        const scoreBadge = record.score != null
-            ? `<div class="record-item-score" style="color: ${record.gradeColor || '#333'}; background: ${record.gradeColor || '#333'}22;">${gradeEmoji[record.grade] || '📋'} ${record.grade} ${record.score}分</div>`
-            : '';
         return `
-        <div class="record-item ${record.id === currentRecordId ? 'active' : ''}" data-id="${record.id}">
-            <div class="record-item-main">
-                <div class="record-item-name">${record.patientName || '未命名'}</div>
-                <div class="record-item-date">${record.date}</div>
-                <div class="record-item-preview">${record.chiefComplaint || '无主诉'}</div>
-            </div>
-            ${scoreBadge}
+        <div class="record-card ${record.id === currentRecordId ? 'active' : ''}" data-id="${record.id}">
+            <div class="record-card-name">${record.patientName || '未命名'}</div>
+            <div class="record-card-time">${record.date || '-'}</div>
         </div>
     `}).join('');
     
-    elements.recordList.querySelectorAll('.record-item').forEach(item => {
+    elements.recordList.querySelectorAll('.record-card').forEach(item => {
         item.addEventListener('click', () => {
             const recordId = item.dataset.id;
             const record = medicalRecords.find(r => r.id === recordId);
@@ -1262,6 +1291,7 @@ function renderRecordList() {
         });
     });
 }
+
 
 // 更新病历计数
 function updateRecordCount() {
@@ -1319,11 +1349,17 @@ function clearAllRecords() {
 // 渲染患者信息
 function renderPatientInfo() {
     if (!currentPatient) {
+    // 更新患者状态
+    const statusEl = document.getElementById('patientStatus');
+    if (statusEl) {
+        statusEl.textContent = currentPatient ? '诊疗中' : '未接诊';
+        statusEl.className = currentPatient ? 'patient-status active' : 'patient-status';
+    }
         elements.patientInfo.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">👤</span>
                 <p>暂无患者</p>
-                <p class="empty-hint">点击"新患者"开始问诊</p>
+                <p class="empty-hint">点击"新患者接诊"开始</p>
             </div>
         `;
         return;
@@ -1592,20 +1628,36 @@ async function loadExaminationTypes() {
 function renderExamTypes() {
     let optionsHtml = '<option value="">请选择检查项目</option>';
     
-    // 处理两种数据格式：对象数组或键值对
-    if (Array.isArray(examinationTypes)) {
-        optionsHtml += examinationTypes.map(type => {
+    // 按分类分组
+    const categories = {};
+    const source = Array.isArray(examinationTypes) 
+        ? examinationTypes 
+        : Object.entries(examinationTypes).map(([key, value]) => ({ ...value, _key: key }));
+    
+    source.forEach(type => {
+        const category = type.category || '其他';
+        if (!categories[category]) categories[category] = [];
+        categories[category].push(type);
+    });
+    
+    // 按分类顺序渲染
+    const categoryOrder = ['查体', '实验室检查', '影像学检查', '特殊检查', '其他'];
+    const sortedCategories = Object.keys(categories).sort((a, b) => {
+        const idxA = categoryOrder.indexOf(a);
+        const idxB = categoryOrder.indexOf(b);
+        return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+    });
+    
+    sortedCategories.forEach(category => {
+        optionsHtml += `<optgroup label="${category}">`;
+        categories[category].forEach(type => {
             const name = type.name || type.id || type;
-            const id = type.id || name;
-            return `<option value="${id}">${name}</option>`;
-        }).join('');
-    } else if (typeof examinationTypes === 'object') {
-        optionsHtml += Object.entries(examinationTypes).map(([key, value]) => {
-            const name = value.name || key;
-            const id = value.id || key;
-            return `<option value="${id}">${name}</option>`;
-        }).join('');
-    }
+            const id = type.id || type._key || name;
+            const price = type.price ? ` ¥${type.price}` : '';
+            optionsHtml += `<option value="${id}">${name}${price}</option>`;
+        });
+        optionsHtml += `</optgroup>`;
+    });
     
     elements.examTypeSelect.innerHTML = optionsHtml;
 }
@@ -1973,10 +2025,8 @@ async function showExamResult(id) {
             examItem.result.aiGenerated = true;
         }
         
-        // 如果没有流式内容，使用非流式渲染
-        if (!aiDescription && resultData) {
-            renderExamResult(examItem);
-        }
+        // 流式完成后，使用医院格式渲染最终结果
+        renderExamResult(examItem);
         appendRegenerateButton(id);
         
     } catch (e) {
@@ -2053,159 +2103,172 @@ function formatExamResult(text) {
 
 function renderExamResult(examItem) {
     const result = examItem.result;
-    let resultHtml = '';
     const examName = examItem.typeName || examItem.type;
-    let auxiliaryText = '';
+    const bodyPart = examItem.bodyPart || '';
+    const examFullName = examName + (bodyPart ? ' - ' + bodyPart : '');
     
-    // 优先显示AI生成的内容（医院风格）
+    // 生成报告编号
+    const reportNo = 'RPT' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.random().toString(36).substr(2,6).toUpperCase();
+    
+    // 获取患者信息
+    const patientName = currentPatient ? currentPatient.name : '未知';
+    const patientGender = currentPatient ? currentPatient.gender : '未知';
+    const patientAge = currentPatient ? currentPatient.age + '岁' : '未知';
+    const department = document.getElementById('mrDepartment')?.value || '内科';
+    const outpatientNo = 'MZ' + new Date().toISOString().slice(0,10).replace(/-/g,'') + String(Math.floor(Math.random()*1000)).padStart(3,'0');
+    
+    // 格式化检查日期
+    const examDate = examItem.date || new Date().toLocaleString('zh-CN');
+    
+    // 构建检查结果内容
+    let findingsText = '';
+    let specialistText = '';
+    
+    console.log('examItem.result:', result);
+    
+    // 处理AI生成的内容
     if (result && result.aiDescription) {
+        console.log('AI Description:', result.aiDescription);
         const parsed = parseHospitalReport(result.aiDescription);
-        resultHtml = `
-            <div class="exam-result-hospital">
-                <div class="exam-header">
-                    <h4>${examName}${examItem.bodyPart ? ' - ' + examItem.bodyPart : ''}</h4>
-                    <div class="exam-date">${examItem.date}</div>
-                </div>
-                ${parsed.findings ? `
-                <div class="exam-data-section">
-                    <div class="exam-data-title">📋 检查数据</div>
-                    <div class="exam-data-body">${parsed.findings}</div>
-                </div>
-                ` : ''}
-                ${parsed.specialist ? `
-                <div class="exam-specialist-section">
-                    <div class="specialist-header">
-                        <span class="specialist-icon">👨‍⚕️</span>
-                        <span class="specialist-title">专科医生意见</span>
-                    </div>
-                    <div class="specialist-body">${parsed.specialist}</div>
-                </div>
-                ` : ''}
-                ${!parsed.specialist && parsed.suspected && parsed.suspected.length > 0 ? `
-                <div class="exam-specialist-section">
-                    <div class="specialist-header">
-                        <span class="specialist-icon">👨‍⚕️</span>
-                        <span class="specialist-title">专科医生意见</span>
-                    </div>
-                    <div class="specialist-body">
-                        <ul>${parsed.suspected.map(s => `<li>${s}</li>`).join('')}</ul>
-                        ${parsed.suggestions ? `<p style="margin-top:8px;">${parsed.suggestions}</p>` : ''}
-                    </div>
-                </div>
-                ` : ''}
-            </div>
-        `;
-        auxiliaryText = `【${examName}检查结果】\n${parsed.findings || result.aiDescription}`;
-        updateAuxiliaryExam(auxiliaryText);
-    } else if (result && result.type === 'blood_routine') {
-        const abnormalItems = Object.values(result.items || {}).filter(item => item.isAbnormal);
-        
-        if (abnormalItems.length > 0) {
-            auxiliaryText = `${examName}异常指标：\n`;
-            abnormalItems.forEach(item => {
-                auxiliaryText += `• ${item.name} ${item.value}${item.unit || ''}（${item.abnormalDirection}，参考值${item.reference}）\n`;
-            });
-            updateAuxiliaryExam(auxiliaryText);
-        }
-        
-        resultHtml = `
-            <div class="exam-result-hospital">
-                <div class="exam-header">
-                    <h4>${examName}</h4>
-                    <div class="exam-date">${examItem.date}</div>
-                </div>
-                <div class="exam-body">
-                    <div class="blood-test-result">
-                        <h5>${result.description || '血常规检查结果'}</h5>
-                        <div class="blood-test-items">
-                            ${Object.values(result.items || {}).map(item => `
-                                <div class="blood-test-item ${item.isAbnormal ? 'abnormal' : ''}">
-                                    <span class="item-name">${item.name}</span>
-                                    <span class="item-value">${item.value}</span>
-                                    <span class="item-unit">${item.unit || ''}</span>
-                                    <span class="item-reference">(${item.reference || '正常'})</span>
-                                    ${item.isAbnormal ? `<span class="abnormal-flag">${item.abnormalDirection}</span>` : ''}
-                                </div>
-                            `).join('')}
-                        </div>
-                        <p class="result-summary">${result.summary || ''}</p>
-                    </div>
-                </div>
-                ${abnormalItems.length > 0 ? `
-                    <div class="suspected-section">
-                        <h5>⚠️ 异常指标提示</h5>
-                        <ul>
-                            ${abnormalItems.map(item => `<li>${item.name} ${item.abnormalDirection}，建议关注相关症状</li>`).join('')}
-                        </ul>
-                    </div>
-                    <div class="suggestion-section">
-                        <h5>💡 建议</h5>
-                        <p>建议结合临床症状综合判断，必要时进一步检查。</p>
-                    </div>
-                ` : ''}
-            </div>
-        `;
+        console.log('Parsed result:', parsed);
+        findingsText = parsed.findings || result.aiDescription;
+        specialistText = parsed.specialist || '';
     } else if (result && result.description) {
-        if (result.type === 'crp' && result.isAbnormal) {
-            auxiliaryText = `${examName}：${result.value}${result.unit}（↑，参考值${result.reference}${result.unit}）`;
-            updateAuxiliaryExam(auxiliaryText);
-        } else if (result.type !== 'crp') {
-            auxiliaryText = `${examName}${examItem.bodyPart ? '（' + examItem.bodyPart + '）' : ''}：\n${result.description}`;
-            updateAuxiliaryExam(auxiliaryText);
-        }
-        
-        resultHtml = `
-            <div class="exam-result-hospital">
-                <div class="exam-header">
-                    <h4>${examName}${examItem.bodyPart ? ' - ' + examItem.bodyPart : ''}</h4>
-                    <div class="exam-date">${examItem.date}</div>
-                </div>
-                <div class="exam-body">
-                    <p>${result.description}</p>
-                </div>
-                <div class="suggestion-section">
-                    <h5>💡 建议</h5>
-                    <p>请结合临床症状综合判断，如有疑问请及时复诊。</p>
-                </div>
-            </div>
-        `;
-    } else if (result) {
-        const findings = result.findings || result.ctFindings || result.description || '';
-        if (findings) {
-            auxiliaryText = `${examName}${examItem.bodyPart ? '（' + examItem.bodyPart + '）' : ''}：\n${findings}`;
-            updateAuxiliaryExam(auxiliaryText);
-        }
-        
-        resultHtml = `
-            <div class="exam-result-hospital">
-                <div class="exam-header">
-                    <h4>${examName}${examItem.bodyPart ? ' - ' + examItem.bodyPart : ''}</h4>
-                    <div class="exam-date">${examItem.date}</div>
-                </div>
-                <div class="exam-body">
-                    <p>${findings || '检查完成'}</p>
-                </div>
-                <div class="suggestion-section">
-                    <h5>💡 建议</h5>
-                    <p>请结合临床症状综合判断。</p>
-                </div>
-            </div>
-        `;
+        findingsText = result.description;
+    } else if (result && result.findings) {
+        findingsText = result.findings;
     } else {
-        resultHtml = `
-            <div class="exam-result-hospital">
-                <div class="exam-header">
-                    <h4>${examName}${examItem.bodyPart ? ' - ' + examItem.bodyPart : ''}</h4>
-                    <div class="exam-date">${examItem.date}</div>
-                </div>
-                <div class="exam-body">
-                    <p>检查结果正常。</p>
-                </div>
-            </div>
-        `;
+        findingsText = '检查完成，各项指标在正常范围内。';
     }
     
-    elements.examResultContent.innerHTML = `<div class="exam-result">${resultHtml}</div>`;
+    console.log('Final findingsText:', findingsText);
+    
+    // 生成检查结果表格（如果有结构化数据）
+    let resultTable = '';
+    if (result && result.items && typeof result.items === 'object') {
+        const items = Object.values(result.items);
+        if (items.length > 0) {
+            resultTable = `
+                <table class="exam-result-table">
+                    <thead>
+                        <tr>
+                            <th>序号</th>
+                            <th>项目名称</th>
+                            <th>结果</th>
+                            <th>单位</th>
+                            <th>参考范围</th>
+                            <th>异常提示</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item, index) => `
+                            <tr class="${item.isAbnormal ? 'abnormal' : ''}">
+                                <td>${index + 1}</td>
+                                <td>${item.name || '-'}</td>
+                                <td>${item.value || '-'}</td>
+                                <td>${item.unit || '-'}</td>
+                                <td>${item.reference || '-'}</td>
+                                <td>${item.isAbnormal ? (item.abnormalDirection || '↑') : '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+    }
+    
+    // 生成报告HTML
+    const reportHtml = `
+        <div class="exam-report">
+            <!-- 报告头部 -->
+            <div class="exam-report-header">
+                <div class="hospital-name">杏 林 医 院</div>
+                <div class="hospital-subtitle">XINGLIN HOSPITAL</div>
+                <div class="report-title">检 查 报 告 单</div>
+                <div class="report-no">报告编号: ${reportNo}</div>
+            </div>
+            
+            <!-- 患者信息栏 -->
+            <div class="exam-patient-info">
+                <table>
+                    <tr>
+                        <td><span class="label">姓　名:</span></td>
+                        <td><span class="value">${patientName}</span></td>
+                        <td><span class="label">性　别:</span></td>
+                        <td><span class="value">${patientGender}</span></td>
+                        <td><span class="label">年　龄:</span></td>
+                        <td><span class="value">${patientAge}</span></td>
+                        <td><span class="label">门诊号:</span></td>
+                        <td><span class="value">${outpatientNo}</span></td>
+                    </tr>
+                    <tr>
+                        <td><span class="label">科　室:</span></td>
+                        <td><span class="value">${department}</span></td>
+                        <td><span class="label">送检医师:</span></td>
+                        <td><span class="value">门诊医师</span></td>
+                        <td><span class="label">检查日期:</span></td>
+                        <td colspan="3"><span class="value">${examDate}</span></td>
+                    </tr>
+                </table>
+            </div>
+            
+            <!-- 检查项目信息 -->
+            <div class="exam-project-info">
+                <span class="exam-name">检查项目: ${examFullName}</span>
+            </div>
+            
+            <!-- 检查结果 -->
+            ${resultTable || `
+                <div style="padding: 12px; border: 1px solid #ddd; margin-bottom: 16px; min-height: 60px; font-size: 14px; line-height: 1.8;">
+                    ${findingsText}
+                </div>
+            `}
+            
+            <!-- 专科医生意见 -->
+            ${specialistText ? `
+                <div class="specialist-section">
+                    <div class="specialist-header">
+                        <span>👨‍⚕️</span>
+                        <span>专科医生意见</span>
+                    </div>
+                    <div class="specialist-body">${specialistText}</div>
+                </div>
+            ` : ''}
+            
+            <!-- 报告医师签名区域 -->
+            <div class="exam-signature-area">
+                <div class="sig-block">
+                    <span class="sig-label">检查者:</span>
+                    <span class="sig-line"></span>
+                </div>
+                <div class="sig-block">
+                    <span class="sig-label">审核者:</span>
+                    <span class="sig-line"></span>
+                </div>
+                <div class="sig-block">
+                    <span class="sig-label">报告日期:</span>
+                    <span class="sig-line"></span>
+                    <span class="sig-date">${new Date().toLocaleDateString('zh-CN', {year:'numeric', month:'long', day:'numeric'})}</span>
+                </div>
+            </div>
+            
+            <!-- 底部备注 -->
+            <div class="exam-report-footer">
+                <p>※ 本报告仅对本次检查结果负责，如有疑问请在三日内与检查科联系。</p>
+                <p>※ ↑ 表示高于参考范围，↓ 表示低于参考范围。</p>
+                <p>地址: 杏林市杏林区杏林路123号　电话: 0571-XXXXXXXX</p>
+            </div>
+        </div>
+    `;
+    
+    elements.examResultContent.innerHTML = reportHtml;
+    
+    // 更新辅助检查文本
+    let auxiliaryText = `【${examFullName}检查结果】\n${findingsText}`;
+    if (specialistText) {
+        auxiliaryText += `\n\n【专科医生意见】\n${specialistText}`;
+    }
+    updateAuxiliaryExam(auxiliaryText);
 }
 
 // 解析医院风格的检查报告
@@ -3373,10 +3436,12 @@ async function renderSurgeryList() {
 
         elements.surgeryListContent.innerHTML = surgeries.map(s => {
             const surgeryName = (s.surgeryType && typeof s.surgeryType === 'object') ? s.surgeryType.name : (s.surgeryType || '未知');
+            const isExploratory = s.surgeryType && typeof s.surgeryType === 'object' && s.surgeryType.isExploratory;
+            const exploratoryTag = isExploratory ? '<span style="background:#E3F2FD;color:#1565C0;padding:1px 6px;border-radius:3px;font-size:11px;margin-left:6px;">探查</span>' : '';
             return `
-                <div class="surgery-item" style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; margin-bottom:8px; background:#fff;">
+                <div class="surgery-item" style="border:1px solid ${isExploratory ? '#90CAF9' : '#e0e0e0'}; border-radius:8px; padding:12px; margin-bottom:8px; background:${isExploratory ? '#FAFEFF' : '#fff'};">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <strong>${surgeryName}</strong>
+                        <strong>${surgeryName}${exploratoryTag}</strong>
                         <span class="status-badge" style="background:${getStatusColor(s.status)}; color:#fff; padding:2px 8px; border-radius:4px; font-size:12px;">
                             ${getStatusLabel(s.status)}
                         </span>
@@ -3385,6 +3450,7 @@ async function renderSurgeryList() {
                         类型: ${s.typeLabel || s.type} | 麻醉: ${s.anesthesiaLabel || s.anesthesiaType}
                     </div>
                     ${s.diagnosis ? `<div style="color:#666; font-size:13px;">诊断: ${s.diagnosis}</div>` : ''}
+                    ${isExploratory && s.status === 'completed' && s.diagnosisConclusion ? `<div style="color:#d32f2f; font-size:13px;margin-top:2px;">结论: ${s.diagnosisConclusion}</div>` : ''}
                     <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
                         <button class="btn btn-sm btn-outline" onclick="showSurgeryDetail('${s.id}')">详情</button>
                         ${s.status === 'pending' ? `<button class="btn btn-sm btn-primary" onclick="updateSurgeryStatus('${s.id}','approved')">审批</button>` : ''}
@@ -3429,6 +3495,23 @@ function showSurgeryDetail(id) {
                 <p><strong>术中发现：</strong>${s.findings || '-'}</p>
                 <p><strong>并发症：</strong>${s.complications || '无'}</p>
                 <p><strong>术后处理：</strong>${s.postOpNotes || '-'}</p>
+                ` : ''}
+                ${(s.status === 'completed' && (s.examinationResult || s.specialistOpinion)) ? `
+                <hr style="margin:12px 0;border-color:#e0e0e0;">
+                <h4 style="color:#1976D2;">🔍 探查报告</h4>
+                <div style="background:#f5f9ff;border:1px solid #d0e3f7;border-radius:6px;padding:12px;margin-bottom:8px;">
+                    <p style="margin-bottom:8px;"><strong style="color:#1976D2;">📋 检查所见：</strong></p>
+                    <p style="white-space:pre-wrap;line-height:1.6;">${s.examinationResult || '-'}</p>
+                </div>
+                ${s.specialistOpinion ? `<div style="background:#f0faf0;border:1px solid #c8e6c9;border-radius:6px;padding:12px;margin-bottom:8px;">
+                    <p style="margin-bottom:8px;"><strong style="color:#388E3C;">👨‍⚕️ 专科医生意见：</strong></p>
+                    <p style="white-space:pre-wrap;line-height:1.6;">${s.specialistOpinion}</p>
+                </div>` : ''}
+                ${s.diagnosisConclusion ? `<p style="margin-bottom:4px;"><strong>🔍 诊断结论：</strong><span style="color:#d32f2f;font-weight:600;">${s.diagnosisConclusion}</span></p>` : ''}
+                ${s.recommendedActions ? `<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:12px;margin-top:8px;">
+                    <p style="margin-bottom:8px;"><strong style="color:#f57c00;">💊 建议后续处理：</strong></p>
+                    <p style="white-space:pre-wrap;line-height:1.6;">${s.recommendedActions}</p>
+                </div>` : ''}
                 ` : ''}
                 <p><strong>创建时间：</strong>${s.createdAt || '-'}</p>
             `;
@@ -3493,35 +3576,183 @@ async function completeSurgeryWithRecord(id) {
 
     const surgeryName = surgery && surgery.surgeryType && typeof surgery.surgeryType === 'object'
         ? surgery.surgeryType.name : (surgery?.surgeryType || '未知手术');
+    const isExploratory = surgery && surgery.surgeryType && typeof surgery.surgeryType === 'object'
+        && surgery.surgeryType.isExploratory;
 
-    const html = `
-        <div style="padding:8px 0;">
-            <h4 style="margin-bottom:12px;">${surgeryName} - 手术记录</h4>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">手术经过/结果 *</label>
-                <textarea id="surgeryOutcome" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="描述手术经过和结果..."></textarea>
+    if (isExploratory) {
+        // 探查型手术：先AI生成报告，再展示结果
+        const html = `
+            <div style="padding:8px 0;">
+                <h4 style="margin-bottom:12px;">${surgeryName} - 探查报告</h4>
+                <div id="exploreAISpinner" style="text-align:center;padding:20px;">
+                    <div style="font-size:24px;margin-bottom:8px;">🤖</div>
+                    <div style="color:#666;">AI正在根据患者病情生成检查报告...</div>
+                    <div style="margin-top:8px;width:200px;height:4px;background:#e0e0e0;border-radius:2px;margin:8px auto;overflow:hidden;">
+                        <div id="exploreAILoadingBar" style="width:0%;height:100%;background:#1976D2;border-radius:2px;transition:width 0.5s;"></div>
+                    </div>
+                    <div id="exploreAIStatus" style="color:#999;font-size:12px;margin-top:4px;">准备中...</div>
+                </div>
+                <div id="exploreResultArea" style="display:none;">
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-weight:600;margin-bottom:4px;color:#1976D2;">📋 检查所见</label>
+                        <textarea id="surgeryExamResult" rows="5" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;font-size:13px;"></textarea>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-weight:600;margin-bottom:4px;color:#1976D2;">👨‍⚕️ 专科医生意见</label>
+                        <textarea id="surgerySpecialistOpinion" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;font-size:13px;"></textarea>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-weight:600;margin-bottom:4px;color:#1976D2;">🔍 诊断结论</label>
+                        <input id="surgeryDiagnosisConclusion" type="text" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-weight:600;margin-bottom:4px;color:#1976D2;">💊 建议后续处理</label>
+                        <textarea id="surgeryRecommendedActions" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;font-size:13px;"></textarea>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-outline" onclick="completeSurgeryWithRecord('${id}')">🔄 重新生成</button>
+                        <button class="btn btn-outline" onclick="document.getElementById('customModal').classList.add('hidden')">取消</button>
+                        <button class="btn btn-primary" onclick="submitExploratoryCompletion('${id}')">确认完成</button>
+                    </div>
+                </div>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">术中发现</label>
-                <textarea id="surgeryFindings" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="术中发现的异常情况..."></textarea>
+        `;
+        showModal('探查报告', html);
+        // 自动调用AI生成报告
+        generateExploreResult(id);
+    } else {
+        // 普通手术：手动填写
+        const html = `
+            <div style="padding:8px 0;">
+                <h4 style="margin-bottom:12px;">${surgeryName} - 手术记录</h4>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block;font-weight:600;margin-bottom:4px;">手术经过/结果 *</label>
+                    <textarea id="surgeryOutcome" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="描述手术经过和结果..."></textarea>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block;font-weight:600;margin-bottom:4px;">术中发现</label>
+                    <textarea id="surgeryFindings" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="术中发现的异常情况..."></textarea>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block;font-weight:600;margin-bottom:4px;">并发症</label>
+                    <input id="surgeryComplications" type="text" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;" placeholder="无 / 具体并发症描述">
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block;font-weight:600;margin-bottom:4px;">术后处理</label>
+                    <textarea id="surgeryPostOpNotes" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="术后注意事项、用药等..."></textarea>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button class="btn btn-outline" onclick="document.getElementById('customModal').classList.add('hidden')">取消</button>
+                    <button class="btn btn-primary" onclick="submitSurgeryCompletion('${id}')">确认完成</button>
+                </div>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">并发症</label>
-                <input id="surgeryComplications" type="text" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;" placeholder="无 / 具体并发症描述">
-            </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">术后处理</label>
-                <textarea id="surgeryPostOpNotes" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;" placeholder="术后注意事项、用药等..."></textarea>
-            </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button class="btn btn-outline" onclick="document.getElementById('customModal').classList.add('hidden')">取消</button>
-                <button class="btn btn-primary" onclick="submitSurgeryCompletion('${id}')">确认完成</button>
-            </div>
-        </div>
-    `;
-    showModal('完成手术', html);
+        `;
+        showModal('完成手术', html);
+    }
 }
 window.completeSurgeryWithRecord = completeSurgeryWithRecord;
+
+// AI生成探查型手术报告
+async function generateExploreResult(id) {
+    const loadingBar = document.getElementById('exploreAILoadingBar');
+    const statusEl = document.getElementById('exploreAIStatus');
+    const spinner = document.getElementById('exploreAISpinner');
+    const resultArea = document.getElementById('exploreResultArea');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/surgeries/${id}/ai-explore-result`, { method: 'POST' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let progress = 10;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6).trim();
+                if (!jsonStr) continue;
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (evt.type === 'progress') {
+                        progress = Math.min(progress + 15, 85);
+                        if (loadingBar) loadingBar.style.width = progress + '%';
+                        if (statusEl) statusEl.textContent = evt.data?.message || '处理中...';
+                    } else if (evt.type === 'complete') {
+                        if (loadingBar) loadingBar.style.width = '100%';
+                        // 填充结果
+                        setTimeout(() => {
+                            if (spinner) spinner.style.display = 'none';
+                            if (resultArea) resultArea.style.display = 'block';
+                            const examResult = document.getElementById('surgeryExamResult');
+                            const specialistOpinion = document.getElementById('surgerySpecialistOpinion');
+                            const diagnosisConclusion = document.getElementById('surgeryDiagnosisConclusion');
+                            const recommendedActions = document.getElementById('surgeryRecommendedActions');
+                            if (examResult) examResult.value = evt.data?.examinationResult || '';
+                            if (specialistOpinion) specialistOpinion.value = evt.data?.specialistOpinion || '';
+                            if (diagnosisConclusion) diagnosisConclusion.value = evt.data?.diagnosisConclusion || '';
+                            if (recommendedActions) recommendedActions.value = evt.data?.recommendedActions || '';
+                        }, 500);
+                    } else if (evt.type === 'error') {
+                        throw new Error(evt.data?.message || 'AI生成失败');
+                    }
+                } catch (parseErr) {
+                    // 忽略解析错误
+                }
+            }
+        }
+    } catch (err) {
+        console.error('AI生成探查报告失败:', err);
+        if (spinner) spinner.innerHTML = `
+            <div style="color:#f44336;font-size:24px;">❌</div>
+            <div style="color:#f44336;margin-top:8px;">AI生成失败: ${err.message}</div>
+            <button class="btn btn-outline" style="margin-top:12px;" onclick="generateExploreResult('${id}')">重试</button>
+        `;
+    }
+}
+window.generateExploreResult = generateExploreResult;
+
+// 提交探查型手术完成
+async function submitExploratoryCompletion(id) {
+    const examinationResult = document.getElementById('surgeryExamResult')?.value?.trim();
+    if (!examinationResult) {
+        alert('检查所见不能为空');
+        return;
+    }
+    const specialistOpinion = document.getElementById('surgerySpecialistOpinion')?.value?.trim() || '';
+    const diagnosisConclusion = document.getElementById('surgeryDiagnosisConclusion')?.value?.trim() || '';
+    const recommendedActions = document.getElementById('surgeryRecommendedActions')?.value?.trim() || '';
+
+    try {
+        const resp1 = await fetch(`${API_BASE_URL}/surgeries/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ examinationResult, specialistOpinion, diagnosisConclusion, recommendedActions, outcome: '探查完成' })
+        });
+        if (!resp1.ok) throw new Error('保存探查记录失败');
+
+        const resp2 = await fetch(`${API_BASE_URL}/surgeries/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'completed' })
+        });
+        if (!resp2.ok) throw new Error('更新状态失败');
+
+        document.getElementById('customModal')?.classList.add('hidden');
+        alert('探查报告已保存！检查完成。');
+        renderSurgeryList();
+    } catch (err) {
+        console.error('提交探查报告失败:', err);
+        alert('操作失败: ' + err.message);
+    }
+}
+window.submitExploratoryCompletion = submitExploratoryCompletion;
 
 // 提交手术完成记录
 async function submitSurgeryCompletion(id) {
